@@ -41,40 +41,32 @@ struct TabWatchEntry: TimelineEntry {
     )
 }
 
-/// Loads the same `TabStore` the watch app writes to. Widget process has
-/// its own lifecycle but reads via the shared App Group UserDefaults
-/// suite, so state is always fresh on reload.
-struct TabWatchProvider: TimelineProvider {
-    func placeholder(in context: Context) -> TabWatchEntry { .placeholder }
+/// Loads the shared UserDefaults suite the watch app writes on every
+/// save. Nonisolated so it's safe to call from TimelineProvider methods
+/// which WidgetKit invokes on arbitrary queues. Reads a subset of keys
+/// rather than instantiating the full `TabStore` to keep widget launch
+/// cheap and avoid MainActor plumbing.
+enum WidgetDataReader {
+    static func currentEntry() -> TabWatchEntry {
+        let defaults = UserDefaults(suiteName: TabStore.appGroupID) ?? .standard
 
-    func getSnapshot(in context: Context, completion: @escaping (TabWatchEntry) -> Void) {
-        completion(currentEntry())
-    }
+        let tabs: [Tab]             = decode(key: "TabWatch.tabs.v2",   from: defaults) ?? []
+        let drinks: [DrinkKind]     = decode(key: "TabWatch.drinks.v1", from: defaults) ?? TabStore.defaultDrinks
+        let sales: DailySales       = decode(key: "TabWatch.sales.v1",  from: defaults) ?? .zero
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<TabWatchEntry>) -> Void) {
-        // Single-entry timeline, refreshed on the next shift-boundary or
-        // whenever the app writes new data (which triggers
-        // WidgetCenter.shared.reloadAllTimelines()).
-        let entry = currentEntry()
-        completion(Timeline(entries: [entry], policy: .never))
-    }
-
-    @MainActor
-    private func loadEntry() -> TabWatchEntry {
-        let store = TabStore()
-        let top = store.tabs.first
+        let topTabModel = tabs.first
+        let firstDrinkModel = drinks.first
         return TabWatchEntry(
             date: Date(),
-            todaysTotal: store.sales.total,
-            todaysTips: store.sales.tips,
-            openTabCount: store.tabs.count,
-            topTab: top.map { tab in
-                let first = store.drinks.first
-                return TabWatchEntry.TopTab(
+            todaysTotal: sales.total,
+            todaysTips: sales.tips,
+            openTabCount: tabs.count,
+            topTab: topTabModel.map { tab in
+                TabWatchEntry.TopTab(
                     id: tab.id,
                     name: tab.name,
-                    total: tab.total(using: store.drinks),
-                    firstDrink: first.map {
+                    total: tab.total(using: drinks),
+                    firstDrink: firstDrinkModel.map {
                         TabWatchEntry.FirstDrink(id: $0.id, name: $0.name, symbolName: $0.symbolName)
                     }
                 )
@@ -82,11 +74,25 @@ struct TabWatchProvider: TimelineProvider {
         )
     }
 
-    private func currentEntry() -> TabWatchEntry {
-        // MainActor bridge — TimelineProvider methods aren't isolated, but
-        // TabStore is @MainActor. `MainActor.assumeIsolated` on watchOS 26
-        // is safe from widget callback context.
-        MainActor.assumeIsolated { loadEntry() }
+    private static func decode<T: Decodable>(key: String, from defaults: UserDefaults) -> T? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+struct TabWatchProvider: TimelineProvider {
+    func placeholder(in context: Context) -> TabWatchEntry { .placeholder }
+
+    func getSnapshot(in context: Context, completion: @escaping (TabWatchEntry) -> Void) {
+        completion(WidgetDataReader.currentEntry())
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<TabWatchEntry>) -> Void) {
+        // Single-entry timeline, refreshed on demand: the app calls
+        // WidgetCenter.shared.reloadAllTimelines() from TabStore.save()
+        // so counts update immediately after a mutation.
+        let entry = WidgetDataReader.currentEntry()
+        completion(Timeline(entries: [entry], policy: .never))
     }
 }
 

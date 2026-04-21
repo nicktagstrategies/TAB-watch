@@ -9,7 +9,13 @@ totals the bill as you go.
 - **Home screen** — today's date, running "Today: $X.XX" from closed tabs,
   list of open tabs, "Add Tab +" to start a new one, and a gear icon in the
   top-right for Settings.
-- **New Tab** — type a name, tap Add.
+- **Add Tab** — one tap. The app auto-numbers ("Tab 1", "Tab 2", ...) and
+  jumps straight into the counter screen. Numbers get recycled as tabs
+  close out, so a busy shift stays at "Tab 1"–"Tab 8" instead of climbing
+  into the hundreds.
+- **Rename** — pencil icon in the top-right of the tab detail. Opens a
+  text entry for a name like "Heather B" or "Red shirt, seat 4". Optional —
+  skip it if you don't care.
 - **Tab detail** — a row of drink counters (Bottle / Beer / Wine). Each one is
   a big plus button when the count is 0, and expands to a `+ / number / icon /
   -` capsule once you start counting. Running total ($) shown at the top.
@@ -40,9 +46,9 @@ TabWatch Watch App/
 │   ├── Tab.swift              # One customer tab
 │   └── TabStore.swift         # Tabs, prices, today's-sales rollup
 └── Views/
-    ├── TabListView.swift      # Home screen + Route enum
-    ├── NewTabView.swift       # Name entry
-    ├── TabDetailView.swift    # Counters + Close Out + Delete
+    ├── TabListView.swift      # Home screen + Route enum + NavigationStack
+    ├── TabDetailView.swift    # Counters + Close Out + Delete + rename button
+    ├── RenameTabView.swift    # Optional name entry for a tab
     ├── DrinkCounterView.swift # Single drink capsule
     └── SettingsView.swift     # Price editor + Today summary
 ```

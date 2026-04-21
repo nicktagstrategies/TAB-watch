@@ -1,62 +1,70 @@
 import SwiftUI
 
 /// Everything reachable from the home screen, routed through a single
-/// `navigationDestination(for:)` so multiple push sources coexist.
+/// `navigationDestination(for:)` so the gear button, tab rows, and the
+/// rename sheet all coexist.
 enum Route: Hashable {
-    case newTab
     case settings
     case tab(Tab.ID)
+    case rename(Tab.ID)
 }
 
 struct TabListView: View {
     @EnvironmentObject private var store: TabStore
+    @State private var path = NavigationPath()
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                header
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(spacing: 12) {
+                    header
 
-                ForEach(store.tabs) { tab in
-                    NavigationLink(value: Route.tab(tab.id)) {
-                        Text(tab.name)
-                            .font(.headline)
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(
-                                Capsule().fill(Color(white: 0.85))
-                            )
+                    ForEach(store.tabs) { tab in
+                        NavigationLink(value: Route.tab(tab.id)) {
+                            Text(tab.name)
+                                .font(.headline)
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(
+                                    Capsule().fill(Color(white: 0.85))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        Haptics.click()
+                        let tab = store.addTab()
+                        path.append(Route.tab(tab.id))
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Add Tab")
+                            Image(systemName: "plus")
+                        }
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(
+                            Capsule().stroke(Color.white, lineWidth: 2)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
-
-                NavigationLink(value: Route.newTab) {
-                    HStack(spacing: 6) {
-                        Text("Add Tab")
-                        Image(systemName: "plus")
+                .padding(.horizontal, 4)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: Route.settings) {
+                        Image(systemName: "gearshape.fill")
                     }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(
-                        Capsule().stroke(Color.white, lineWidth: 2)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 4)
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: Route.settings) {
-                    Image(systemName: "gearshape.fill")
                 }
             }
-        }
-        .navigationDestination(for: Route.self) { route in
-            switch route {
-            case .newTab:        NewTabView()
-            case .settings:      SettingsView()
-            case .tab(let id):   TabDetailView(tabID: id)
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .settings:       SettingsView()
+                case .tab(let id):    TabDetailView(tabID: id)
+                case .rename(let id): RenameTabView(tabID: id)
+                }
             }
         }
     }
@@ -101,8 +109,6 @@ struct TabListView: View {
 }
 
 #Preview {
-    NavigationStack {
-        TabListView()
-            .environmentObject(TabStore())
-    }
+    TabListView()
+        .environmentObject(TabStore())
 }

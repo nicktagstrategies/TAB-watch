@@ -9,6 +9,13 @@ struct TabDetailView: View {
         if let tab = store.tab(id: tabID) {
             content(for: tab)
                 .navigationTitle(tab.name)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink(value: Route.rename(tab.id)) {
+                            Image(systemName: "pencil")
+                        }
+                    }
+                }
         } else {
             // Tab was closed out or deleted — pop back.
             Color.clear.onAppear { dismiss() }

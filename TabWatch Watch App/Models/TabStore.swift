@@ -43,12 +43,38 @@ final class TabStore: ObservableObject {
 
     // MARK: - Tab mutations
 
+    /// Adds a tab with an auto-incremented name ("Tab 1", "Tab 2", ...).
+    /// The next number is the smallest positive integer not currently used
+    /// by an open `Tab N`-named tab, so numbers get recycled as tabs close.
+    @discardableResult
+    func addTab() -> Tab {
+        addTab(name: nextAutoName())
+    }
+
+    @discardableResult
     func addTab(name: String) -> Tab {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tab = Tab(name: trimmed.isEmpty ? "Tab" : trimmed)
+        let tab = Tab(name: trimmed.isEmpty ? nextAutoName() : trimmed)
         tabs.insert(tab, at: 0)
         save()
         return tab
+    }
+
+    func rename(id: Tab.ID, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        update(id) { $0.name = trimmed }
+    }
+
+    private func nextAutoName() -> String {
+        let prefix = "Tab "
+        let used: Set<Int> = Set(tabs.compactMap { tab -> Int? in
+            guard tab.name.hasPrefix(prefix) else { return nil }
+            return Int(tab.name.dropFirst(prefix.count))
+        })
+        var n = 1
+        while used.contains(n) { n += 1 }
+        return "\(prefix)\(n)"
     }
 
     func increment(_ kind: DrinkKind, for id: Tab.ID) {

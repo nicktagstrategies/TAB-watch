@@ -63,6 +63,15 @@ struct SettingsView: View {
                     Text("\(store.sales.closedTabs)")
                         .foregroundStyle(.secondary)
                 }
+                if store.sales.tips > 0 {
+                    HStack {
+                        Text("Tips")
+                        Spacer()
+                        Text(Self.currencyString(store.sales.tips))
+                            .foregroundStyle(Color(red: 0.09, green: 0.62, blue: 0.36))
+                            .monospacedDigit()
+                    }
+                }
                 if store.sales.walkers > 0 {
                     HStack {
                         Text("Walkers")

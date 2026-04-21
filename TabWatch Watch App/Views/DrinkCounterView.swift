@@ -72,6 +72,8 @@ struct DrinkCounterView: View {
 
             Text("\(count)")
                 .font(.system(size: 32, weight: .bold))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel("\(count) \(drink.name)")

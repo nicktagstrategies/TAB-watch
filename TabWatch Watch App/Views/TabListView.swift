@@ -9,6 +9,8 @@ enum Route: Hashable {
     case rename(Tab.ID)
     case editDrink(UUID)
     case split(Tab.ID)
+    case move(Tab.ID)
+    case recent
 }
 
 struct TabListView: View {
@@ -50,6 +52,8 @@ struct TabListView: View {
                     // Sits below Add Tab so the tab rows above don't shift
                     // when the banner appears for 30 s post-close.
                     UndoBanner()
+
+                    RecentLink()
                 }
                 .padding(.horizontal, 4)
             }
@@ -68,6 +72,8 @@ struct TabListView: View {
                 case .rename(let id):     RenameTabView(tabID: id)
                 case .editDrink(let id):  EditDrinkView(drinkID: id)
                 case .split(let id):      SplitTabView(tabID: id)
+                case .move(let id):       MoveTabView(tabID: id)
+                case .recent:             RecentClosuresView()
                 }
             }
         }
@@ -205,6 +211,30 @@ private struct UndoBanner: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Undo close out of \(snap.tab.name), \(secondsLeft) seconds left")
+    }
+}
+
+/// Subtle "Recent" link below Add Tab, surfaced only when there's
+/// something to reopen within the 2 h window. Distinct from the 30 s
+/// Undo banner — that handles mis-tap recovery; this handles "the
+/// customer came back".
+private struct RecentLink: View {
+    @EnvironmentObject private var store: TabStore
+
+    var body: some View {
+        if !store.recentClosures.isEmpty {
+            NavigationLink(value: Route.recent) {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.arrow.circlepath")
+                    Text("Recent (\(store.recentClosures.count))")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Recent closures")
+        }
     }
 }
 

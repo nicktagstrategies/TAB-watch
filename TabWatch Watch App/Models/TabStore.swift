@@ -14,27 +14,39 @@ struct DailySales: Codable, Equatable {
     /// total shouldn't see phantom dollars.
     var lost: Decimal
     var walkers: Int
+    /// Tips collected on close-out. Separate bucket so she can glance at
+    /// "what did I make tonight" vs. "what did the bar ring up".
+    var tips: Decimal
 
     static let zero = DailySales(
         date: .distantPast,
         total: 0,
         closedTabs: 0,
         lost: 0,
-        walkers: 0
+        walkers: 0,
+        tips: 0
     )
 
-    // Custom init keeps backward compat with rollups persisted before the
-    // lost/walkers fields existed — missing keys decode as 0.
+    // Custom init keeps backward compat with rollups persisted before new
+    // fields existed — missing keys decode as 0.
     enum CodingKeys: String, CodingKey {
-        case date, total, closedTabs, lost, walkers
+        case date, total, closedTabs, lost, walkers, tips
     }
 
-    init(date: Date, total: Decimal, closedTabs: Int, lost: Decimal, walkers: Int) {
+    init(
+        date: Date,
+        total: Decimal,
+        closedTabs: Int,
+        lost: Decimal,
+        walkers: Int,
+        tips: Decimal
+    ) {
         self.date = date
         self.total = total
         self.closedTabs = closedTabs
         self.lost = lost
         self.walkers = walkers
+        self.tips = tips
     }
 
     init(from decoder: Decoder) throws {
@@ -44,6 +56,7 @@ struct DailySales: Codable, Equatable {
         closedTabs = try c.decode(Int.self, forKey: .closedTabs)
         lost = try c.decodeIfPresent(Decimal.self, forKey: .lost) ?? 0
         walkers = try c.decodeIfPresent(Int.self, forKey: .walkers) ?? 0
+        tips = try c.decodeIfPresent(Decimal.self, forKey: .tips) ?? 0
     }
 
     /// Returns `self` if `date` and `now` fall in the same business day,
@@ -56,7 +69,7 @@ struct DailySales: Codable, Equatable {
         if Self.sameBusinessDay(date, now, shiftStartHour: shiftStartHour, calendar: calendar) {
             return self
         }
-        return DailySales(date: now, total: 0, closedTabs: 0, lost: 0, walkers: 0)
+        return DailySales(date: now, total: 0, closedTabs: 0, lost: 0, walkers: 0, tips: 0)
     }
 
     /// Two dates belong to the same business day iff they share a calendar
@@ -80,12 +93,14 @@ struct DailySales: Codable, Equatable {
 /// One-slot undo buffer for Close Out / Delete. Not persisted — if the app
 /// is killed, the window is gone. In memory it lives until the next
 /// close-out replaces it (or `expireLastClosed` clears it past 30 s).
-struct ClosedTabSnapshot: Equatable {
+struct ClosedTabSnapshot: Equatable, Codable {
     let tab: Tab
     let originalIndex: Int
     /// For close-outs and walkers: the dollars to reverse on undo. Zero
     /// for plain discards.
     let collectedAmount: Decimal
+    /// Tip collected alongside the close-out. Reversed on undo.
+    let tipAmount: Decimal
     let closedAt: Date
     let wasDelete: Bool
     /// True when the tab was deleted as an unpaid "walker" — the
@@ -93,6 +108,10 @@ struct ClosedTabSnapshot: Equatable {
     let wasWalker: Bool
 
     static let undoWindow: TimeInterval = 30
+    /// How long closed tabs remain reopenable from the Recent list before
+    /// being purged. Longer than the undo window since this is a "customer
+    /// came back" feature, not a mis-tap safety net.
+    static let recentWindow: TimeInterval = 60 * 60 * 2   // 2 hours
 }
 
 @MainActor
@@ -111,15 +130,24 @@ final class TabStore: ObservableObject {
     @Published private(set) var shiftStartHour: Int = 4
     /// Most recent Close Out / Delete, available for undo within 30 s.
     @Published private(set) var lastClosed: ClosedTabSnapshot?
+    /// Longer-lived buffer for "customer came back" reopens. Kept newest-
+    /// first; pruned to `maxRecentClosures` and `ClosedTabSnapshot.recentWindow`
+    /// on every access. Survives beyond the 30 s undo window.
+    @Published private(set) var recentClosures: [ClosedTabSnapshot] = []
 
-    /// Hard cap so the counter row stays readable on a 40mm watch.
-    static let maxDrinks = 4
+    /// Hard cap. Up to 4 are laid out in a fixed HStack; 5-8 get a
+    /// horizontal ScrollView so drink tiers (well / call / premium)
+    /// are reachable without crushing layout.
+    static let maxDrinks = 8
+    /// Upper bound on the reopen-buffer. Older entries fall off first.
+    static let maxRecentClosures = 10
 
     private let tabsKey = "TabWatch.tabs.v2"
     private let drinksKey = "TabWatch.drinks.v1"
     private let salesKey = "TabWatch.sales.v1"
     private let taxRateKey = "TabWatch.taxRate.v1"
     private let shiftStartHourKey = "TabWatch.shiftStartHour.v1"
+    private let recentClosuresKey = "TabWatch.recentClosures.v1"
     private let defaults: UserDefaults
 
     /// Ships with her vocabulary, not ours. She said "beers / AMFs /
@@ -222,25 +250,40 @@ final class TabStore: ObservableObject {
     }
 
     /// "Close Out": removes the tab and adds the amount collected (subtotal +
-    /// tax) to today's sales. Use this when the customer paid. The tab is
-    /// captured in `lastClosed` for a 30 s undo window.
-    func closeOut(id: Tab.ID) {
+    /// tax) to today's sales. Optional `tipPercent` is applied to the
+    /// pre-tax subtotal and added to `sales.tips`. Use this when the
+    /// customer paid. The tab is captured in `lastClosed` for a 30 s
+    /// undo window and `recentClosures` for a 2 h reopen window.
+    func closeOut(id: Tab.ID, tipPercent: Int? = nil) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs[index]
         let collected = tab.totalWithTax(using: drinks, rate: taxRate)
+        let tip = Self.tipAmount(on: tab.total(using: drinks), percent: tipPercent)
         rollOverIfNeeded()
         sales.total += collected
         sales.closedTabs += 1
+        sales.tips += tip
         tabs.remove(at: index)
-        lastClosed = ClosedTabSnapshot(
+        let snap = ClosedTabSnapshot(
             tab: tab,
             originalIndex: index,
             collectedAmount: collected,
+            tipAmount: tip,
             closedAt: Date(),
             wasDelete: false,
             wasWalker: false
         )
+        lastClosed = snap
+        recordRecentClosure(snap)
         save()
+    }
+
+    static func tipAmount(on subtotal: Decimal, percent: Int?) -> Decimal {
+        guard let pct = percent, pct > 0 else { return 0 }
+        var raw = subtotal * Decimal(pct) / 100
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &raw, 2, .plain)
+        return rounded
     }
 
     /// "Delete": remove the tab with no accounting effect. Use for
@@ -266,14 +309,88 @@ final class TabStore: ObservableObject {
             sales.lost += wouldHaveCollected
             sales.walkers += 1
         }
-        lastClosed = ClosedTabSnapshot(
+        let snap = ClosedTabSnapshot(
             tab: tab,
             originalIndex: index,
             collectedAmount: asWalker ? wouldHaveCollected : 0,
+            tipAmount: 0,
             closedAt: Date(),
             wasDelete: true,
             wasWalker: asWalker
         )
+        lastClosed = snap
+        recordRecentClosure(snap)
+        save()
+    }
+
+    private func recordRecentClosure(_ snap: ClosedTabSnapshot) {
+        recentClosures.insert(snap, at: 0)
+        if recentClosures.count > Self.maxRecentClosures {
+            recentClosures = Array(recentClosures.prefix(Self.maxRecentClosures))
+        }
+    }
+
+    /// Drops recent closures past the 2 h window. Safe to call freely;
+    /// home-screen timers drive it.
+    func pruneRecentClosures(now: Date = Date()) {
+        let cutoff = now.addingTimeInterval(-ClosedTabSnapshot.recentWindow)
+        let filtered = recentClosures.filter { $0.closedAt >= cutoff }
+        if filtered.count != recentClosures.count {
+            recentClosures = filtered
+            save()
+        }
+    }
+
+    /// Restore a closure from the recent buffer. Reverses sales accounting
+    /// only when it's still the same business day — crossing shift
+    /// boundaries leaves the original shift's totals untouched (they've
+    /// already been reported out).
+    func reopenRecent(snapshotID: UUID) {
+        guard let idx = recentClosures.firstIndex(where: { $0.tab.id == snapshotID }) else { return }
+        let snap = recentClosures.remove(at: idx)
+        let sameShift = DailySales.sameBusinessDay(
+            snap.closedAt, Date(),
+            shiftStartHour: shiftStartHour
+        )
+        if sameShift {
+            if !snap.wasDelete {
+                sales.total -= snap.collectedAmount
+                sales.tips -= snap.tipAmount
+                sales.closedTabs = max(0, sales.closedTabs - 1)
+            } else if snap.wasWalker {
+                sales.lost -= snap.collectedAmount
+                sales.walkers = max(0, sales.walkers - 1)
+            }
+        }
+        // Always insert at the top; the original index is stale after
+        // minutes/hours. Auto-numbers may collide; leave the name as-is
+        // and let her rename if the duplicate bothers her.
+        tabs.insert(snap.tab, at: 0)
+        if lastClosed?.tab.id == snap.tab.id {
+            lastClosed = nil
+        }
+        save()
+    }
+
+    /// Moves drinks from `source` to an already-open `destination`. Counts
+    /// are clamped to what the source actually has. The destination's
+    /// locked prices apply to the moved drinks — matching the paying
+    /// customer's price-list expectation.
+    func moveDrinks(from source: Tab.ID, to destination: Tab.ID, moving: [String: Int]) {
+        guard source != destination,
+              let sourceIdx = tabs.firstIndex(where: { $0.id == source }),
+              let destIdx = tabs.firstIndex(where: { $0.id == destination }) else { return }
+        var realized: [String: Int] = [:]
+        for (drinkID, qty) in moving where qty > 0 {
+            let available = tabs[sourceIdx].counts[drinkID] ?? 0
+            let move = min(qty, available)
+            if move > 0 { realized[drinkID] = move }
+        }
+        guard !realized.isEmpty else { return }
+        for (drinkID, qty) in realized {
+            tabs[sourceIdx].counts[drinkID] = max(0, (tabs[sourceIdx].counts[drinkID] ?? 0) - qty)
+            tabs[destIdx].counts[drinkID] = (tabs[destIdx].counts[drinkID] ?? 0) + qty
+        }
         save()
     }
 
@@ -321,8 +438,9 @@ final class TabStore: ObservableObject {
         let index = min(snap.originalIndex, tabs.count)
         tabs.insert(snap.tab, at: index)
         if !snap.wasDelete {
-            // Close-out → reverse the sales bump.
+            // Close-out → reverse the sales bump and tip.
             sales.total -= snap.collectedAmount
+            sales.tips -= snap.tipAmount
             sales.closedTabs = max(0, sales.closedTabs - 1)
         } else if snap.wasWalker {
             // Walker → reverse the loss entry.
@@ -403,7 +521,14 @@ final class TabStore: ObservableObject {
     /// Manually clear today's rolled-up total. The daily auto-rollover handles
     /// this at midnight; this is for "start fresh now".
     func resetTodaysSales() {
-        sales = DailySales(date: Date(), total: 0, closedTabs: 0, lost: 0, walkers: 0)
+        sales = DailySales(
+            date: Date(),
+            total: 0,
+            closedTabs: 0,
+            lost: 0,
+            walkers: 0,
+            tips: 0
+        )
         save()
     }
 
@@ -462,6 +587,11 @@ final class TabStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(Int.self, from: data) {
             shiftStartHour = decoded
         }
+        if let data = defaults.data(forKey: recentClosuresKey),
+           let decoded = try? JSONDecoder().decode([ClosedTabSnapshot].self, from: data) {
+            recentClosures = decoded
+        }
+        pruneRecentClosures()
     }
 
     private func save() {
@@ -479,6 +609,9 @@ final class TabStore: ObservableObject {
         }
         if let data = try? JSONEncoder().encode(shiftStartHour) {
             defaults.set(data, forKey: shiftStartHourKey)
+        }
+        if let data = try? JSONEncoder().encode(recentClosures) {
+            defaults.set(data, forKey: recentClosuresKey)
         }
     }
 }

@@ -5,12 +5,21 @@ struct TabDetailView: View {
     @EnvironmentObject private var store: TabStore
     @Environment(\.dismiss) private var dismiss
     @State private var deleteConfirmShown = false
+    @State private var closeOutConfirmShown = false
     /// Crown targets the drink she most recently tapped `+` or `-` on. On
     /// first open, defaults to the first drink.
     @State private var activeDrinkID: UUID?
+    /// When the crown-active window started — set on any `+` / `-` tap.
+    /// After `crownWindow` seconds of inactivity, crown input is ignored
+    /// so a wrist brush doesn't silently add drinks.
+    @State private var activeSince: Date?
     /// Raw crown position. Kept monotonic across a session; we apply the
     /// delta between ticks rather than the absolute value.
     @State private var crownValue: Double = 0
+
+    /// Crown stays live for this many seconds after a +/- tap. Long enough
+    /// to crank a round, short enough that idle wrist brushes don't count.
+    private let crownWindow: TimeInterval = 10
 
     var body: some View {
         if let tab = store.tab(id: tabID) {
@@ -36,6 +45,9 @@ struct TabDetailView: View {
                     applyCrownDelta(Int(new - old), tab: tab)
                 }
                 .onAppear {
+                    // Default the target to the first drink so the crown
+                    // has something to aim at — but DO NOT set activeSince,
+                    // so crown stays dormant until she taps a button.
                     if activeDrinkID == nil {
                         activeDrinkID = store.drinks.first?.id
                     }
@@ -46,13 +58,66 @@ struct TabDetailView: View {
         }
     }
 
+    /// Counter row. TimelineView ticks once a second so the active ring
+    /// fades on its own when the crown window expires — otherwise the
+    /// ring would linger on a drink the crown can no longer drive,
+    /// misleading her at a glance.
+    @ViewBuilder
+    private func counterRow(for tab: Tab) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let liveActiveID = isCrownLive(now: context.date) ? activeDrinkID : nil
+            let row = HStack(alignment: .top, spacing: 6) {
+                ForEach(store.drinks) { drink in
+                    DrinkCounterView(
+                        drink: drink,
+                        count: tab.count(of: drink),
+                        isActive: drink.id == liveActiveID,
+                        onIncrement: {
+                            Haptics.click()
+                            activeDrinkID = drink.id
+                            activeSince = Date()
+                            store.increment(drink.id, for: tab.id)
+                        },
+                        onDecrement: {
+                            Haptics.click()
+                            activeDrinkID = drink.id
+                            activeSince = Date()
+                            store.decrement(drink.id, for: tab.id)
+                        }
+                    )
+                }
+            }
+
+            // Horizontal scroll when more than 4 drinks so the 40mm watch
+            // doesn't squash them past readable width.
+            if store.drinks.count > 4 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    row.padding(.horizontal, 2)
+                }
+            } else {
+                row
+            }
+        }
+    }
+
+    private func isCrownLive(now: Date) -> Bool {
+        guard let since = activeSince else { return false }
+        return now.timeIntervalSince(since) < crownWindow
+    }
+
     private func applyCrownDelta(_ delta: Int, tab: Tab) {
         guard delta != 0, let drinkID = activeDrinkID else { return }
+        // Ignore crown input outside the active window — wrist brushes
+        // turn the crown constantly on a real watch.
+        guard let since = activeSince,
+              Date().timeIntervalSince(since) < crownWindow else { return }
         if delta > 0 {
             for _ in 0..<delta { store.increment(drinkID, for: tab.id) }
         } else {
             for _ in 0..<(-delta) { store.decrement(drinkID, for: tab.id) }
         }
+        // Each crown action extends the window so a slow crank doesn't time out.
+        activeSince = Date()
     }
 
     @ViewBuilder
@@ -74,30 +139,11 @@ struct TabDetailView: View {
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 20)
                 } else {
-                    HStack(alignment: .top, spacing: 6) {
-                        ForEach(store.drinks) { drink in
-                            DrinkCounterView(
-                                drink: drink,
-                                count: tab.count(of: drink),
-                                isActive: drink.id == activeDrinkID,
-                                onIncrement: {
-                                    Haptics.click()
-                                    activeDrinkID = drink.id
-                                    store.increment(drink.id, for: tab.id)
-                                },
-                                onDecrement: {
-                                    Haptics.click()
-                                    activeDrinkID = drink.id
-                                    store.decrement(drink.id, for: tab.id)
-                                }
-                            )
-                        }
-                    }
+                    counterRow(for: tab)
                 }
 
                 Button {
-                    Haptics.success()
-                    store.closeOut(id: tab.id)
+                    closeOutConfirmShown = true
                 } label: {
                     Text("Close Out")
                         .font(.headline)
@@ -111,19 +157,38 @@ struct TabDetailView: View {
                 .padding(.top, 8)
                 .accessibilityLabel("Close out \(tab.name)")
 
-                // Only offered when there's something to split off.
+                // Only offered when there's something to split / move.
                 if tab.counts.values.reduce(0, +) > 0 {
-                    NavigationLink(value: Route.split(tab.id)) {
-                        Text("Split")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(
-                                Capsule().stroke(Color.white, lineWidth: 2)
-                            )
+                    HStack(spacing: 6) {
+                        NavigationLink(value: Route.split(tab.id)) {
+                            Text("Split")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, minHeight: 36)
+                                .background(
+                                    Capsule().stroke(Color.white, lineWidth: 2)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Split \(tab.name)")
+
+                        // Move is only useful if there's another tab to
+                        // move to; hide otherwise so the bare button
+                        // doesn't invite a tap that goes nowhere.
+                        if store.tabs.count > 1 {
+                            NavigationLink(value: Route.move(tab.id)) {
+                                Text("Move")
+                                    .font(.caption)
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .background(
+                                        Capsule().stroke(Color.white, lineWidth: 2)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Move from \(tab.name)")
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Split \(tab.name)")
                 }
 
                 Button {
@@ -142,6 +207,23 @@ struct TabDetailView: View {
             }
             .padding(.horizontal, 4)
             .padding(.bottom, 8)
+        }
+        .confirmationDialog(
+            closeOutTitle(for: tab),
+            isPresented: $closeOutConfirmShown,
+            titleVisibility: .visible
+        ) {
+            // Tip presets are common US bar rates. "No tip" first so the
+            // default-position button matches the most common case (cash-
+            // paid tabs where the tip is left separately on the counter).
+            Button("No tip") { commitCloseOut(tab: tab, tipPercent: nil) }
+            Button("+ 15% tip") { commitCloseOut(tab: tab, tipPercent: 15) }
+            Button("+ 18% tip") { commitCloseOut(tab: tab, tipPercent: 18) }
+            Button("+ 20% tip") { commitCloseOut(tab: tab, tipPercent: 20) }
+            Button("+ 25% tip") { commitCloseOut(tab: tab, tipPercent: 25) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(closeOutMessage(for: tab))
         }
         .confirmationDialog(
             deleteConfirmTitle(for: tab),
@@ -169,9 +251,41 @@ struct TabDetailView: View {
     private func deleteConfirmTitle(for tab: Tab) -> String {
         let total = tab.totalWithTax(using: store.drinks, rate: store.taxRate)
         if total > 0 {
-            return "Remove \(tab.name) · $\(NSDecimalNumber(decimal: total).stringValue)?"
+            return "Remove \(tab.name) · \(Self.currency(total))?"
         }
         return "Remove \(tab.name)?"
+    }
+
+    private func closeOutTitle(for tab: Tab) -> String {
+        "Close \(tab.name) · \(Self.currency(tab.totalWithTax(using: store.drinks, rate: store.taxRate)))?"
+    }
+
+    private func closeOutMessage(for tab: Tab) -> String {
+        let subtotal = tab.total(using: store.drinks)
+        guard subtotal > 0 else {
+            return "Tab is empty."
+        }
+        // Preview each tip preset so she can see the cash amount instead
+        // of multiplying in her head during a rush.
+        let tips = [15, 18, 20, 25].map { pct -> String in
+            let amt = TabStore.tipAmount(on: subtotal, percent: pct)
+            return "\(pct)%: \(Self.currency(amt))"
+        }
+        return tips.joined(separator: " · ")
+    }
+
+    private func commitCloseOut(tab: Tab, tipPercent: Int?) {
+        Haptics.success()
+        store.closeOut(id: tab.id, tipPercent: tipPercent)
+    }
+
+    private static func currency(_ value: Decimal) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.maximumFractionDigits = 2
+        f.minimumFractionDigits = 2
+        return f.string(from: value as NSDecimalNumber) ?? "$0.00"
     }
 }
 
@@ -215,6 +329,10 @@ private struct PriceHeader: View {
                 .baselineOffset(18)
         }
         .foregroundStyle(.white)
+        // 4-digit totals (`$1,234⁵⁰`) and even $100+ rounds would clip
+        // without a shrink budget on the narrow 40mm screen.
+        .minimumScaleFactor(0.5)
+        .lineLimit(1)
     }
 
     private static func currency(_ value: Decimal) -> String {

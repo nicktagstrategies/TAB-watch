@@ -15,6 +15,7 @@ struct TabWatchApp: App {
                     // across midnight until the next close-out triggers it.
                     if newPhase == .active {
                         store.rollOverIfNeeded()
+                        store.pruneRecentClosures()
                     }
                 }
         }

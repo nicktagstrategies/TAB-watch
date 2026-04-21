@@ -22,13 +22,18 @@ totals the bill as you go.
   number / icon / -` capsule once you start counting. Running total ($)
   sits at the top. Tap `+` / `-` for a haptic click. The **Digital Crown**
   increments/decrements the most-recently-tapped drink (shown with an
-  accent ring) for fast "buying a round" entry without tapping.
-- **Close Out** (green) — finishes the tab, adds the tax-inclusive total
-  to Today's sales, plays a success haptic, and pops back. Undoable for
-  30 s.
-- **Split** (white outline, only when drinks are counted) — pushes into a
-  Stepper-per-drink screen to move some of the counts onto a new
-  auto-numbered tab. New tab inherits the source's locked prices.
+  accent ring) for fast "buying a round" entry without tapping. Crown
+  only acts within a 10 s window after a `+` / `-` tap so a wrist brush
+  can't silently add drinks. Up to 4 drinks fit in a fixed row; 5–8 get
+  a horizontal scroll.
+- **Close Out** (green) — two-step confirm with optional tip presets
+  (No tip / 15 / 18 / 20 / 25%). Adds the tax-inclusive total to Today's
+  sales and the tip to Today's Tips bucket. Undoable for 30 s and
+  reopenable from Recent for up to 2 hours.
+- **Split** (white outline) and **Move** — Split peels drinks onto a new
+  auto-numbered tab (inherits source's locked prices). Move transfers
+  drinks to another already-open tab (charged at the destination's
+  prices). Both only show when drinks are counted.
 - **Delete** (orange outline) — two-step confirm with two options:
   **Walker (unpaid)** logs the would-have-been amount to today's "Lost"
   bucket for shift reconciliation; **Discard** just throws the tab away.
@@ -47,9 +52,14 @@ totals the bill as you go.
   **4 AM**). The "Today" total rolls over at this hour, not calendar
   midnight, so a close-out at 1:30 AM still counts toward the prior
   shift.
-- **Settings — Today** — running sales + tabs-closed count, plus a
-  "Walkers" row when any unpaid tabs were marked that day. "Reset Today"
-  has a confirmation so a pocket tap can't wipe the shift total.
+- **Settings — Today** — running sales + tabs-closed count, plus **Tips**
+  (collected from Close Out) and **Walkers** (unpaid tabs) rows when
+  non-zero. "Reset Today" has a confirmation so a pocket tap can't wipe
+  the shift total.
+- **Recent** — a small link on the home screen when any tab has been
+  closed / deleted / walkered within the last 2 hours. Pushes to a list
+  where she can reopen one if the customer returns. Reversing accounts
+  is skipped if the reopen crosses a shift boundary.
 
 ## Project layout
 
@@ -68,9 +78,11 @@ TabWatch Watch App/
 │   └── TabStore.swift         # Tabs, drinks, sales, tax, shift, undo
 └── Views/
     ├── TabListView.swift      # Home screen + Route enum + UndoBanner
-    ├── TabDetailView.swift    # Counters + Close Out + Split + Delete + crown
+    ├── TabDetailView.swift    # Counters + Close Out + Split + Move + Delete + crown
     ├── RenameTabView.swift    # Optional name entry for a tab
-    ├── SplitTabView.swift     # Per-drink Stepper to split off a new tab
+    ├── SplitTabView.swift     # Per-drink Stepper → new auto-numbered tab
+    ├── MoveTabView.swift      # Per-drink Stepper → another existing tab
+    ├── RecentClosuresView.swift # 2-hour reopen list
     ├── DrinkCounterView.swift # Single drink capsule + active ring
     ├── EditDrinkView.swift    # Name / icon / price editor for one drink
     └── SettingsView.swift     # Drinks list, Tax, Shift, Today, confirms

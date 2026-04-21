@@ -1,0 +1,55 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  watchos:
+    name: watchOS build
+    runs-on: macos-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # Xcode 26 ships the watchOS 26 SDK + Liquid Glass APIs.
+          # Falls back to latest-stable if a specific 26.x isn't
+          # available yet on the runner image.
+          xcode-version: latest-stable
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build watch app (signing off)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project TabWatch.xcodeproj \
+            -scheme "TabWatch Watch App" \
+            -destination "generic/platform=watchOS" \
+            -skipPackagePluginValidation \
+            ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build \
+            | xcbeautify --renderer github-actions

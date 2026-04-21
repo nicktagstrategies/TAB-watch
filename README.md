@@ -106,17 +106,27 @@ the App Group capability gets provisioned.
 
 ## Building
 
-You need macOS with Xcode 26+ (for the watchOS 26 SDK — Liquid Glass
-APIs). Then:
+Requires macOS with Xcode 26+ (watchOS 26 SDK).
 
 ```sh
-brew install xcodegen          # one-time
-xcodegen generate              # produces TabWatch.xcodeproj
-open TabWatch.xcodeproj
+./scripts/setup.sh     # installs xcodegen if missing, generates project, opens Xcode
 ```
 
-In Xcode, select the **TabWatch Watch App** scheme and run it on a watchOS
-simulator or a paired Apple Watch.
+Then in Xcode:
+
+1. Signing & Capabilities → pick your Apple ID team for **both** the
+   `TabWatch Watch App` and `TabWatch Widget` targets.
+2. Pick your watch as the run destination and hit ⌘R.
+
+Every push to this repo is compile-checked on GitHub's macOS runner via
+`.github/workflows/build.yml`, so if CI is green the code at least
+compiles; local failures are specific to your Mac's environment.
+
+For a compile-only check on your Mac (matches CI exactly):
+
+```sh
+./scripts/build.sh
+```
 
 ## Customizing drinks
 

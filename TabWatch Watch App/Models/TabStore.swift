@@ -1,8 +1,10 @@
 import Foundation
 import SwiftUI
 
-/// Running "sales today" rollup. Resets automatically when the stored date
-/// is no longer the same calendar day as `now`.
+/// Running "sales today" rollup. Rolls over when the "business day" changes,
+/// where a business day is `[shiftStartHour, shiftStartHour + 24h)` instead
+/// of calendar midnight. A bartender whose shift ends at 2 AM wants 4 AM
+/// rollover, not 12 AM.
 struct DailySales: Codable, Equatable {
     var date: Date
     var total: Decimal
@@ -10,13 +12,34 @@ struct DailySales: Codable, Equatable {
 
     static let zero = DailySales(date: .distantPast, total: 0, closedTabs: 0)
 
-    /// Returns `self` if the stored date is today, otherwise a fresh zero
-    /// value dated to `now`.
-    func rolledOver(to now: Date, calendar: Calendar = .current) -> DailySales {
-        if calendar.isDate(date, inSameDayAs: now) {
+    /// Returns `self` if `date` and `now` fall in the same business day,
+    /// otherwise a fresh zero value dated to `now`.
+    func rolledOver(
+        to now: Date,
+        shiftStartHour: Int,
+        calendar: Calendar = .current
+    ) -> DailySales {
+        if Self.sameBusinessDay(date, now, shiftStartHour: shiftStartHour, calendar: calendar) {
             return self
         }
         return DailySales(date: now, total: 0, closedTabs: 0)
+    }
+
+    /// Two dates belong to the same business day iff they share a calendar
+    /// day after shifting backwards by `shiftStartHour` hours. E.g. with
+    /// shiftStartHour=4, April 20 3:59 AM (shifts to April 19 11:59 PM) and
+    /// April 19 10:00 PM (shifts to April 19 6:00 PM) are the same day.
+    static func sameBusinessDay(
+        _ a: Date,
+        _ b: Date,
+        shiftStartHour: Int,
+        calendar: Calendar = .current
+    ) -> Bool {
+        let offset = -TimeInterval(shiftStartHour) * 3600
+        return calendar.isDate(
+            a.addingTimeInterval(offset),
+            inSameDayAs: b.addingTimeInterval(offset)
+        )
     }
 }
 
@@ -28,11 +51,15 @@ final class TabStore: ObservableObject {
     /// Sales-tax fraction. `0.0825` = 8.25%. Defaults to 0 so tax display
     /// only shows up once the user opts in from Settings.
     @Published private(set) var taxRate: Decimal = 0
+    /// Hour (0–23) at which the "business day" rolls over. 4 AM fits a bar
+    /// schedule — close-outs after midnight still count toward last night.
+    @Published private(set) var shiftStartHour: Int = 4
 
     private let tabsKey = "TabWatch.tabs.v1"
     private let pricesKey = "TabWatch.prices.v1"
     private let salesKey = "TabWatch.sales.v1"
     private let taxRateKey = "TabWatch.taxRate.v1"
+    private let shiftStartHourKey = "TabWatch.shiftStartHour.v1"
     private let defaults: UserDefaults
 
     static var defaultPrices: [DrinkKind: Decimal] {
@@ -127,6 +154,15 @@ final class TabStore: ObservableObject {
         save()
     }
 
+    /// Sets the shift-start hour. Clamped to 0–12; higher values would put
+    /// rollover in the middle of the afternoon, which nobody wants.
+    func setShiftStartHour(_ hour: Int) {
+        shiftStartHour = min(max(0, hour), 12)
+        // Re-evaluate rollover in case the new cutoff moves the boundary.
+        rollOverIfNeeded()
+        save()
+    }
+
     // MARK: - Sales
 
     /// Manually clear today's rolled-up total. The daily auto-rollover handles
@@ -136,8 +172,10 @@ final class TabStore: ObservableObject {
         save()
     }
 
-    private func rollOverIfNeeded(now: Date = Date()) {
-        let rolled = sales.rolledOver(to: now)
+    /// Public so the app entry point can call this on `scenePhase == .active`,
+    /// otherwise "Today" stays stale until the next close-out.
+    func rollOverIfNeeded(now: Date = Date()) {
+        let rolled = sales.rolledOver(to: now, shiftStartHour: shiftStartHour)
         if rolled != sales {
             sales = rolled
         }
@@ -184,6 +222,10 @@ final class TabStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(Decimal.self, from: data) {
             taxRate = decoded
         }
+        if let data = defaults.data(forKey: shiftStartHourKey),
+           let decoded = try? JSONDecoder().decode(Int.self, from: data) {
+            shiftStartHour = decoded
+        }
     }
 
     private func save() {
@@ -198,6 +240,9 @@ final class TabStore: ObservableObject {
         }
         if let data = try? JSONEncoder().encode(taxRate) {
             defaults.set(data, forKey: taxRateKey)
+        }
+        if let data = try? JSONEncoder().encode(shiftStartHour) {
+            defaults.set(data, forKey: shiftStartHourKey)
         }
     }
 }

@@ -17,6 +17,10 @@ struct SettingsView: View {
                 TaxRateRow()
             }
 
+            Section("Shift") {
+                ShiftStartRow()
+            }
+
             Section("Today") {
                 HStack {
                     Text("Sales")
@@ -83,6 +87,40 @@ private struct TaxRateRow: View {
         formatter.maximumFractionDigits = 3
         let number = NSNumber(value: currentPercent)
         return (formatter.string(from: number) ?? "0") + "%"
+    }
+}
+
+/// When the "business day" rolls over. Default 4 AM — a bartender closing
+/// out at 1:30 AM still wants those sales on the same shift total.
+private struct ShiftStartRow: View {
+    @EnvironmentObject private var store: TabStore
+
+    var body: some View {
+        Stepper(value: binding, in: 0...12, step: 1) {
+            HStack {
+                Text("Day starts")
+                Spacer()
+                Text(Self.hourLabel(store.shiftStartHour))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var binding: Binding<Int> {
+        Binding(
+            get: { store.shiftStartHour },
+            set: { store.setShiftStartHour($0) }
+        )
+    }
+
+    static func hourLabel(_ hour: Int) -> String {
+        switch hour {
+        case 0:         return "12 AM"
+        case 12:        return "12 PM"
+        case 1...11:    return "\(hour) AM"
+        default:        return "\(hour) AM"
+        }
     }
 }
 

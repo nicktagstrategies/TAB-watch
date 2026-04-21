@@ -8,6 +8,7 @@ enum Route: Hashable {
     case tab(Tab.ID)
     case rename(Tab.ID)
     case editDrink(UUID)
+    case split(Tab.ID)
 }
 
 struct TabListView: View {
@@ -66,6 +67,7 @@ struct TabListView: View {
                 case .tab(let id):        TabDetailView(tabID: id)
                 case .rename(let id):     RenameTabView(tabID: id)
                 case .editDrink(let id):  EditDrinkView(drinkID: id)
+                case .split(let id):      SplitTabView(tabID: id)
                 }
             }
         }

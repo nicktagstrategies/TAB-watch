@@ -50,7 +50,7 @@ struct EditDrinkView: View {
                 }
             }
 
-            Section("Price") {
+            Section {
                 Stepper(
                     value: priceBinding(for: drink),
                     in: 0...100,
@@ -63,6 +63,11 @@ struct EditDrinkView: View {
                             .monospacedDigit()
                     }
                 }
+            } header: {
+                Text("Price")
+            } footer: {
+                Text("Applies to new tabs only. Open tabs keep their price.")
+                    .font(.caption2)
             }
 
             Section {

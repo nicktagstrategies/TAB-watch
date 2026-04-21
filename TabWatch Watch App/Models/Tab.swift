@@ -9,29 +9,38 @@ struct Tab: Identifiable, Codable, Hashable {
     /// Orphaned entries (count for a drink that's since been deleted)
     /// are silently ignored in totals.
     var counts: [String: Int]
+    /// Snapshot of drink prices at tab creation. When populated, the tab's
+    /// total uses these locked values — so a mid-shift happy-hour change
+    /// doesn't retroactively alter open tabs. Nil for tabs created before
+    /// this field existed (use current store prices as fallback).
+    var drinkPrices: [String: Decimal]?
 
     init(
         id: UUID = UUID(),
         name: String,
         createdAt: Date = Date(),
-        counts: [String: Int] = [:]
+        counts: [String: Int] = [:],
+        drinkPrices: [String: Decimal]? = nil
     ) {
         self.id = id
         self.name = name
         self.createdAt = createdAt
         self.counts = counts
+        self.drinkPrices = drinkPrices
     }
 
     func count(of drink: DrinkKind) -> Int {
         counts[drink.id.uuidString] ?? 0
     }
 
-    /// Pre-tax subtotal across the given drinks. Orphaned count keys
-    /// (drink was deleted while the tab was open) contribute 0.
+    /// Pre-tax subtotal across the given drinks. Uses this tab's locked
+    /// price snapshot when available, falling back to the drink's current
+    /// price for legacy tabs or drinks added after this tab was opened.
     func total(using drinks: [DrinkKind]) -> Decimal {
         drinks.reduce(Decimal(0)) { running, drink in
             let qty = Decimal(counts[drink.id.uuidString] ?? 0)
-            return running + qty * drink.price
+            let price = drinkPrices?[drink.id.uuidString] ?? drink.price
+            return running + qty * price
         }
     }
 

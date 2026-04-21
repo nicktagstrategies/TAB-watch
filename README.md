@@ -20,12 +20,22 @@ totals the bill as you go.
 - **Tab detail** — a row of drink-counter capsules, one per configured
   drink. Each is a big plus button when count == 0, and expands to a `+ /
   number / icon / -` capsule once you start counting. Running total ($)
-  sits at the top. Tap `+` / `-` for a haptic click.
+  sits at the top. Tap `+` / `-` for a haptic click. The **Digital Crown**
+  increments/decrements the most-recently-tapped drink (shown with an
+  accent ring) for fast "buying a round" entry without tapping.
 - **Close Out** (green) — finishes the tab, adds the tax-inclusive total
   to Today's sales, plays a success haptic, and pops back. Undoable for
   30 s.
-- **Delete** (orange outline) — throws the tab away without recording it.
-  For mistakes. Also undoable for 30 s.
+- **Split** (white outline, only when drinks are counted) — pushes into a
+  Stepper-per-drink screen to move some of the counts onto a new
+  auto-numbered tab. New tab inherits the source's locked prices.
+- **Delete** (orange outline) — two-step confirm with two options:
+  **Walker (unpaid)** logs the would-have-been amount to today's "Lost"
+  bucket for shift reconciliation; **Discard** just throws the tab away.
+  Both are undoable for 30 s.
+- **Per-tab price lock** — each tab snapshots current drink prices at
+  creation. Changing a price in Settings afterwards only affects new
+  tabs — open tabs stay at the price their customer was quoted.
 - **Settings — Drinks** — a list of drink kinds. Tap a row to edit the
   name, icon (from a fixed palette of 6 SF Symbols), and price. Swipe
   left to delete. "Add Drink" appends a new slot (capped at 4). Ships
@@ -37,8 +47,9 @@ totals the bill as you go.
   **4 AM**). The "Today" total rolls over at this hour, not calendar
   midnight, so a close-out at 1:30 AM still counts toward the prior
   shift.
-- **Settings — Today** — running sales + tabs-closed count, with a
-  "Reset Today" button for starting fresh mid-shift.
+- **Settings — Today** — running sales + tabs-closed count, plus a
+  "Walkers" row when any unpaid tabs were marked that day. "Reset Today"
+  has a confirmation so a pocket tap can't wipe the shift total.
 
 ## Project layout
 
@@ -57,11 +68,12 @@ TabWatch Watch App/
 │   └── TabStore.swift         # Tabs, drinks, sales, tax, shift, undo
 └── Views/
     ├── TabListView.swift      # Home screen + Route enum + UndoBanner
-    ├── TabDetailView.swift    # Counters + Close Out + Delete + rename button
+    ├── TabDetailView.swift    # Counters + Close Out + Split + Delete + crown
     ├── RenameTabView.swift    # Optional name entry for a tab
-    ├── DrinkCounterView.swift # Single drink capsule
+    ├── SplitTabView.swift     # Per-drink Stepper to split off a new tab
+    ├── DrinkCounterView.swift # Single drink capsule + active ring
     ├── EditDrinkView.swift    # Name / icon / price editor for one drink
-    └── SettingsView.swift     # Drinks list, Tax, Shift, Today
+    └── SettingsView.swift     # Drinks list, Tax, Shift, Today, confirms
 ```
 
 ## Building

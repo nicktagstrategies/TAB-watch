@@ -4,6 +4,8 @@ import SwiftUI
 /// `EditDrinkView`; tax and shift are inline Steppers.
 struct SettingsView: View {
     @EnvironmentObject private var store: TabStore
+    @State private var resetConfirmShown = false
+    @State private var pendingDrinkDeletion: IndexSet?
 
     var body: some View {
         List {
@@ -23,9 +25,11 @@ struct SettingsView: View {
                     }
                 }
                 .onDelete { indexSet in
-                    for i in indexSet {
-                        store.removeDrink(id: store.drinks[i].id)
-                    }
+                    // Stash the deletion and confirm — swipe-delete drops
+                    // the drink AND prunes counts from every open tab, so
+                    // a pocket-gesture shouldn't be able to trigger it
+                    // silently.
+                    pendingDrinkDeletion = indexSet
                 }
 
                 if store.drinks.count < TabStore.maxDrinks {
@@ -59,12 +63,87 @@ struct SettingsView: View {
                     Text("\(store.sales.closedTabs)")
                         .foregroundStyle(.secondary)
                 }
+                if store.sales.walkers > 0 {
+                    HStack {
+                        Text("Walkers")
+                        Spacer()
+                        Text("\(store.sales.walkers) · \(Self.currencyString(store.sales.lost))")
+                            .foregroundStyle(.orange)
+                            .monospacedDigit()
+                    }
+                }
                 Button("Reset Today", role: .destructive) {
-                    store.resetTodaysSales()
+                    resetConfirmShown = true
                 }
             }
         }
         .navigationTitle("Settings")
+        .confirmationDialog(
+            "Reset today's sales?",
+            isPresented: $resetConfirmShown,
+            titleVisibility: .visible
+        ) {
+            Button("Reset", role: .destructive) {
+                Haptics.failure()
+                store.resetTodaysSales()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears \(Self.currencyString(store.sales.total)) and \(store.sales.closedTabs) closed tabs.")
+        }
+        .confirmationDialog(
+            drinkDeletionTitle,
+            isPresented: drinkDeletionPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                guard let indexSet = pendingDrinkDeletion else { return }
+                Haptics.failure()
+                for i in indexSet {
+                    if i < store.drinks.count {
+                        store.removeDrink(id: store.drinks[i].id)
+                    }
+                }
+                pendingDrinkDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDrinkDeletion = nil
+            }
+        } message: {
+            Text(drinkDeletionMessage)
+        }
+    }
+
+    // `.confirmationDialog(isPresented:)` wants a stable Bool binding; we
+    // derive one from the optional IndexSet so the dialog closes when we
+    // reset it to nil.
+    private var drinkDeletionPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDrinkDeletion != nil },
+            set: { if !$0 { pendingDrinkDeletion = nil } }
+        )
+    }
+
+    private var drinkDeletionTitle: String {
+        guard let first = pendingDrinkDeletion?.first,
+              first < store.drinks.count else { return "Remove drink?" }
+        return "Remove \(store.drinks[first].name)?"
+    }
+
+    private var drinkDeletionMessage: String {
+        guard let indexSet = pendingDrinkDeletion else { return "" }
+        let affected = indexSet
+            .compactMap { $0 < store.drinks.count ? store.drinks[$0].id : nil }
+        var totalCount = 0
+        for tab in store.tabs {
+            for id in affected {
+                totalCount += tab.counts[id.uuidString] ?? 0
+            }
+        }
+        if totalCount > 0 {
+            return "\(totalCount) counted on open tabs will be dropped."
+        }
+        return "This can't be undone."
     }
 
     static func currencyString(_ value: Decimal) -> String {

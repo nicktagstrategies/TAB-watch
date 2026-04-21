@@ -9,8 +9,42 @@ struct DailySales: Codable, Equatable {
     var date: Date
     var total: Decimal
     var closedTabs: Int
+    /// Dollars that walked out unpaid. Tracked separately so `total` stays a
+    /// clean "sales collected" figure — managers asking for the register
+    /// total shouldn't see phantom dollars.
+    var lost: Decimal
+    var walkers: Int
 
-    static let zero = DailySales(date: .distantPast, total: 0, closedTabs: 0)
+    static let zero = DailySales(
+        date: .distantPast,
+        total: 0,
+        closedTabs: 0,
+        lost: 0,
+        walkers: 0
+    )
+
+    // Custom init keeps backward compat with rollups persisted before the
+    // lost/walkers fields existed — missing keys decode as 0.
+    enum CodingKeys: String, CodingKey {
+        case date, total, closedTabs, lost, walkers
+    }
+
+    init(date: Date, total: Decimal, closedTabs: Int, lost: Decimal, walkers: Int) {
+        self.date = date
+        self.total = total
+        self.closedTabs = closedTabs
+        self.lost = lost
+        self.walkers = walkers
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(Date.self, forKey: .date)
+        total = try c.decode(Decimal.self, forKey: .total)
+        closedTabs = try c.decode(Int.self, forKey: .closedTabs)
+        lost = try c.decodeIfPresent(Decimal.self, forKey: .lost) ?? 0
+        walkers = try c.decodeIfPresent(Int.self, forKey: .walkers) ?? 0
+    }
 
     /// Returns `self` if `date` and `now` fall in the same business day,
     /// otherwise a fresh zero value dated to `now`.
@@ -22,7 +56,7 @@ struct DailySales: Codable, Equatable {
         if Self.sameBusinessDay(date, now, shiftStartHour: shiftStartHour, calendar: calendar) {
             return self
         }
-        return DailySales(date: now, total: 0, closedTabs: 0)
+        return DailySales(date: now, total: 0, closedTabs: 0, lost: 0, walkers: 0)
     }
 
     /// Two dates belong to the same business day iff they share a calendar
@@ -49,9 +83,14 @@ struct DailySales: Codable, Equatable {
 struct ClosedTabSnapshot: Equatable {
     let tab: Tab
     let originalIndex: Int
-    let collectedAmount: Decimal   // 0 for deletes
+    /// For close-outs and walkers: the dollars to reverse on undo. Zero
+    /// for plain discards.
+    let collectedAmount: Decimal
     let closedAt: Date
     let wasDelete: Bool
+    /// True when the tab was deleted as an unpaid "walker" — the
+    /// collectedAmount was added to `sales.lost`, not `sales.total`.
+    let wasWalker: Bool
 
     static let undoWindow: TimeInterval = 30
 }
@@ -123,10 +162,22 @@ final class TabStore: ObservableObject {
     @discardableResult
     func addTab(name: String) -> Tab {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tab = Tab(name: trimmed.isEmpty ? nextAutoName() : trimmed)
+        let tab = Tab(
+            name: trimmed.isEmpty ? nextAutoName() : trimmed,
+            drinkPrices: Self.snapshotPrices(from: drinks)
+        )
         tabs.insert(tab, at: 0)
         save()
         return tab
+    }
+
+    /// Captures the current drink prices keyed by drink UUID string. Used
+    /// on tab creation so the tab's totals stay locked to the prices that
+    /// were in effect when the customer sat down.
+    static func snapshotPrices(from drinks: [DrinkKind]) -> [String: Decimal] {
+        Dictionary(
+            uniqueKeysWithValues: drinks.map { ($0.id.uuidString, $0.price) }
+        )
     }
 
     func rename(id: Tab.ID, to newName: String) {
@@ -186,29 +237,81 @@ final class TabStore: ObservableObject {
             originalIndex: index,
             collectedAmount: collected,
             closedAt: Date(),
-            wasDelete: false
+            wasDelete: false,
+            wasWalker: false
         )
         save()
     }
 
-    /// "Delete": throw the tab away without recording the sale. Captured in
-    /// `lastClosed` for a 30 s undo window in case the tap was a mistake.
+    /// "Delete": remove the tab with no accounting effect. Use for
+    /// accidental opens — nothing was served.
     func delete(id: Tab.ID) {
+        removeTab(id: id, asWalker: false)
+    }
+
+    /// "Walker": customer left without paying. Drinks were served, so the
+    /// dollars move to `sales.lost` (NOT `sales.total`) for shift
+    /// reconciliation. Undoable like any other remove.
+    func markWalker(id: Tab.ID) {
+        removeTab(id: id, asWalker: true)
+    }
+
+    private func removeTab(id: Tab.ID, asWalker: Bool) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs[index]
+        let wouldHaveCollected = tab.totalWithTax(using: drinks, rate: taxRate)
         tabs.remove(at: index)
+        if asWalker && wouldHaveCollected > 0 {
+            rollOverIfNeeded()
+            sales.lost += wouldHaveCollected
+            sales.walkers += 1
+        }
         lastClosed = ClosedTabSnapshot(
             tab: tab,
             originalIndex: index,
-            collectedAmount: 0,
+            collectedAmount: asWalker ? wouldHaveCollected : 0,
             closedAt: Date(),
-            wasDelete: true
+            wasDelete: true,
+            wasWalker: asWalker
         )
         save()
     }
 
-    /// Restores the most recent Close Out / Delete. No-op if the 30 s window
-    /// has passed or there's nothing to undo.
+    /// Splits drinks off a tab onto a new auto-numbered tab. `moving` is
+    /// keyed by `DrinkKind.id.uuidString` → count to move; counts are
+    /// clamped against what the source tab actually has. The new tab
+    /// inherits the source tab's locked prices so split halves charge
+    /// identically.
+    func splitTab(id: Tab.ID, moving: [String: Int]) {
+        guard let sourceIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let source = tabs[sourceIndex]
+        // Filter out zero / negative entries and clamp to what's available.
+        var realized: [String: Int] = [:]
+        for (drinkID, qty) in moving where qty > 0 {
+            let available = source.counts[drinkID] ?? 0
+            let move = min(qty, available)
+            if move > 0 { realized[drinkID] = move }
+        }
+        guard !realized.isEmpty else { return }
+        // Subtract from source.
+        for (drinkID, qty) in realized {
+            let current = tabs[sourceIndex].counts[drinkID] ?? 0
+            tabs[sourceIndex].counts[drinkID] = max(0, current - qty)
+        }
+        // New tab inherits the source's locked prices, not current drink
+        // prices — so splitting a pre-happy-hour tab doesn't magically
+        // re-price the split half.
+        let newTab = Tab(
+            name: nextAutoName(),
+            counts: realized,
+            drinkPrices: source.drinkPrices
+        )
+        tabs.insert(newTab, at: 0)
+        save()
+    }
+
+    /// Restores the most recent Close Out / Delete / Walker. No-op if the
+    /// 30 s window has passed or there's nothing to undo.
     func undoLast() {
         guard let snap = lastClosed else { return }
         guard Date().timeIntervalSince(snap.closedAt) < ClosedTabSnapshot.undoWindow else {
@@ -218,8 +321,13 @@ final class TabStore: ObservableObject {
         let index = min(snap.originalIndex, tabs.count)
         tabs.insert(snap.tab, at: index)
         if !snap.wasDelete {
+            // Close-out → reverse the sales bump.
             sales.total -= snap.collectedAmount
             sales.closedTabs = max(0, sales.closedTabs - 1)
+        } else if snap.wasWalker {
+            // Walker → reverse the loss entry.
+            sales.lost -= snap.collectedAmount
+            sales.walkers = max(0, sales.walkers - 1)
         }
         lastClosed = nil
         save()
@@ -295,7 +403,7 @@ final class TabStore: ObservableObject {
     /// Manually clear today's rolled-up total. The daily auto-rollover handles
     /// this at midnight; this is for "start fresh now".
     func resetTodaysSales() {
-        sales = DailySales(date: Date(), total: 0, closedTabs: 0)
+        sales = DailySales(date: Date(), total: 0, closedTabs: 0, lost: 0, walkers: 0)
         save()
     }
 

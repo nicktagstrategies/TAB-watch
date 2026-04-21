@@ -4,6 +4,13 @@ struct TabDetailView: View {
     let tabID: Tab.ID
     @EnvironmentObject private var store: TabStore
     @Environment(\.dismiss) private var dismiss
+    @State private var deleteConfirmShown = false
+    /// Crown targets the drink she most recently tapped `+` or `-` on. On
+    /// first open, defaults to the first drink.
+    @State private var activeDrinkID: UUID?
+    /// Raw crown position. Kept monotonic across a session; we apply the
+    /// delta between ticks rather than the absolute value.
+    @State private var crownValue: Double = 0
 
     var body: some View {
         if let tab = store.tab(id: tabID) {
@@ -17,9 +24,34 @@ struct TabDetailView: View {
                         .accessibilityLabel("Rename tab")
                     }
                 }
+                .focusable(true)
+                .digitalCrownRotation(
+                    $crownValue,
+                    from: -10000, through: 10000, by: 1,
+                    sensitivity: .medium,
+                    isContinuous: false,
+                    isHapticFeedbackEnabled: true
+                )
+                .onChange(of: crownValue) { old, new in
+                    applyCrownDelta(Int(new - old), tab: tab)
+                }
+                .onAppear {
+                    if activeDrinkID == nil {
+                        activeDrinkID = store.drinks.first?.id
+                    }
+                }
         } else {
             // Tab was closed out or deleted — pop back.
             Color.clear.onAppear { dismiss() }
+        }
+    }
+
+    private func applyCrownDelta(_ delta: Int, tab: Tab) {
+        guard delta != 0, let drinkID = activeDrinkID else { return }
+        if delta > 0 {
+            for _ in 0..<delta { store.increment(drinkID, for: tab.id) }
+        } else {
+            for _ in 0..<(-delta) { store.decrement(drinkID, for: tab.id) }
         }
     }
 
@@ -47,12 +79,15 @@ struct TabDetailView: View {
                             DrinkCounterView(
                                 drink: drink,
                                 count: tab.count(of: drink),
+                                isActive: drink.id == activeDrinkID,
                                 onIncrement: {
                                     Haptics.click()
+                                    activeDrinkID = drink.id
                                     store.increment(drink.id, for: tab.id)
                                 },
                                 onDecrement: {
                                     Haptics.click()
+                                    activeDrinkID = drink.id
                                     store.decrement(drink.id, for: tab.id)
                                 }
                             )
@@ -76,9 +111,23 @@ struct TabDetailView: View {
                 .padding(.top, 8)
                 .accessibilityLabel("Close out \(tab.name)")
 
+                // Only offered when there's something to split off.
+                if tab.counts.values.reduce(0, +) > 0 {
+                    NavigationLink(value: Route.split(tab.id)) {
+                        Text("Split")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(
+                                Capsule().stroke(Color.white, lineWidth: 2)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Split \(tab.name)")
+                }
+
                 Button {
-                    Haptics.failure()
-                    store.delete(id: tab.id)
+                    deleteConfirmShown = true
                 } label: {
                     Text("Delete")
                         .font(.headline)
@@ -94,6 +143,35 @@ struct TabDetailView: View {
             .padding(.horizontal, 4)
             .padding(.bottom, 8)
         }
+        .confirmationDialog(
+            deleteConfirmTitle(for: tab),
+            isPresented: $deleteConfirmShown,
+            titleVisibility: .visible
+        ) {
+            // "Walker" only makes sense when drinks were served. For a $0
+            // tab (accidental open), skip straight to Discard.
+            if tab.totalWithTax(using: store.drinks, rate: store.taxRate) > 0 {
+                Button("Walker (unpaid)", role: .destructive) {
+                    Haptics.failure()
+                    store.markWalker(id: tab.id)
+                }
+            }
+            Button("Discard", role: .destructive) {
+                Haptics.failure()
+                store.delete(id: tab.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Undo is available for 30 s on the home screen.")
+        }
+    }
+
+    private func deleteConfirmTitle(for tab: Tab) -> String {
+        let total = tab.totalWithTax(using: store.drinks, rate: store.taxRate)
+        if total > 0 {
+            return "Remove \(tab.name) · $\(NSDecimalNumber(decimal: total).stringValue)?"
+        }
+        return "Remove \(tab.name)?"
     }
 }
 

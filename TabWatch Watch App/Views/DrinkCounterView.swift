@@ -10,15 +10,29 @@ import SwiftUI
 struct DrinkCounterView: View {
     let drink: DrinkKind
     let count: Int
+    /// The drink the Digital Crown is currently driving. Rendered as a
+    /// thin accent ring so she can tell at a glance which column will
+    /// respond to the crown.
+    var isActive: Bool = false
     let onIncrement: () -> Void
     let onDecrement: () -> Void
 
     var body: some View {
-        if count == 0 {
-            emptyState
-        } else {
-            filledState
+        Group {
+            if count == 0 {
+                emptyState
+            } else {
+                filledState
+            }
         }
+        .overlay(
+            Group {
+                if isActive {
+                    Capsule()
+                        .stroke(Color.accentColor, lineWidth: 2)
+                }
+            }
+        )
     }
 
     private var emptyState: some View {

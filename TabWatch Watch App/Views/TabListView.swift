@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Everything reachable from the home screen, routed through a single
-/// `navigationDestination(for:)` so the gear button, tab rows, and the
-/// rename sheet all coexist.
+/// `navigationDestination(for:)` so the gear button, tab rows, the
+/// rename sheet, and the drink editor all coexist.
 enum Route: Hashable {
     case settings
     case tab(Tab.ID)
@@ -20,17 +20,9 @@ struct TabListView: View {
                 VStack(spacing: 12) {
                     header
 
-                    UndoBanner()
-
                     ForEach(store.tabs) { tab in
                         NavigationLink(value: Route.tab(tab.id)) {
-                            Text(tab.name)
-                                .font(.headline)
-                                .foregroundStyle(.black)
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .background(
-                                    Capsule().fill(Color(white: 0.85))
-                                )
+                            TabRow(tab: tab)
                         }
                         .buttonStyle(.plain)
                     }
@@ -52,6 +44,11 @@ struct TabListView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Add tab")
+
+                    // Sits below Add Tab so the tab rows above don't shift
+                    // when the banner appears for 30 s post-close.
+                    UndoBanner()
                 }
                 .padding(.horizontal, 4)
             }
@@ -60,6 +57,7 @@ struct TabListView: View {
                     NavigationLink(value: Route.settings) {
                         Image(systemName: "gearshape.fill")
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .navigationDestination(for: Route.self) { route in
@@ -112,6 +110,48 @@ struct TabListView: View {
     }
 }
 
+/// Single tab row: `Tab 3` on the left, `$14.50` on the right when the
+/// tab has any drinks. Lets her spot the heavy hitter at a glance without
+/// tapping in.
+private struct TabRow: View {
+    let tab: Tab
+    @EnvironmentObject private var store: TabStore
+
+    var body: some View {
+        HStack {
+            Text(tab.name)
+                .font(.headline)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if subtotal > 0 {
+                Text(SettingsView.currencyString(subtotal))
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(Color(white: 0.35))
+            }
+        }
+        .foregroundStyle(.black)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(
+            Capsule().fill(Color(white: 0.85))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var subtotal: Decimal {
+        tab.total(using: store.drinks)
+    }
+
+    private var accessibilityDescription: String {
+        if subtotal > 0 {
+            return "\(tab.name), \(SettingsView.currencyString(subtotal))"
+        }
+        return tab.name
+    }
+}
+
 /// Transient "Undo — Tab 3 · 18s" capsule, visible for 30 s after a Close
 /// Out or Delete. TimelineView drives the countdown; when the window
 /// expires, the capsule asks the store to clear the snapshot so the next
@@ -127,10 +167,6 @@ private struct UndoBanner: View {
                 if remaining > 0 {
                     banner(for: snap, secondsLeft: remaining)
                 } else {
-                    // Window expired — clear the snapshot so this view
-                    // disappears. Mutating state from a body is normally
-                    // a no-no, but `expireLastClosedIfNeeded` is idempotent
-                    // and we're past the render pass when it runs.
                     Color.clear
                         .frame(height: 0)
                         .onAppear { store.expireLastClosedIfNeeded() }
@@ -166,6 +202,7 @@ private struct UndoBanner: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Undo close out of \(snap.tab.name), \(secondsLeft) seconds left")
     }
 }
 

@@ -14,6 +14,7 @@ struct TabDetailView: View {
                         NavigationLink(value: Route.rename(tab.id)) {
                             Image(systemName: "pencil")
                         }
+                        .accessibilityLabel("Rename tab")
                     }
                 }
         } else {
@@ -73,6 +74,7 @@ struct TabDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 8)
+                .accessibilityLabel("Close out \(tab.name)")
 
                 Button {
                     Haptics.failure()
@@ -87,6 +89,7 @@ struct TabDetailView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Delete \(tab.name)")
             }
             .padding(.horizontal, 4)
             .padding(.bottom, 8)

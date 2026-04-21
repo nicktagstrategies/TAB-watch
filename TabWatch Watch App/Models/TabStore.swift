@@ -97,6 +97,17 @@ final class TabStore: ObservableObject {
         self.defaults = defaults
         load()
         rollOverIfNeeded()
+        pruneLegacyKeys()
+    }
+
+    /// One-time cleanup of keys from before the v2 schema bump. Cheap to
+    /// run every launch; the keys are absent after the first pass.
+    private func pruneLegacyKeys() {
+        for legacy in ["TabWatch.tabs.v1", "TabWatch.prices.v1"] {
+            if defaults.object(forKey: legacy) != nil {
+                defaults.removeObject(forKey: legacy)
+            }
+        }
     }
 
     // MARK: - Tab mutations
@@ -126,13 +137,23 @@ final class TabStore: ObservableObject {
 
     private func nextAutoName() -> String {
         let prefix = "Tab "
-        let used: Set<Int> = Set(tabs.compactMap { tab -> Int? in
-            guard tab.name.hasPrefix(prefix) else { return nil }
-            return Int(tab.name.dropFirst(prefix.count))
-        })
+        var used: Set<Int> = Set(tabs.compactMap { Self.parseTabNumber($0.name) })
+        // Reserve the number held by a pending undo so restoring it doesn't
+        // collide with a freshly-recycled "Tab 3".
+        if let snap = lastClosed,
+           Date().timeIntervalSince(snap.closedAt) < ClosedTabSnapshot.undoWindow,
+           let n = Self.parseTabNumber(snap.tab.name) {
+            used.insert(n)
+        }
         var n = 1
         while used.contains(n) { n += 1 }
         return "\(prefix)\(n)"
+    }
+
+    private static func parseTabNumber(_ name: String) -> Int? {
+        let prefix = "Tab "
+        guard name.hasPrefix(prefix) else { return nil }
+        return Int(name.dropFirst(prefix.count))
     }
 
     func increment(_ drinkID: UUID, for id: Tab.ID) {
@@ -260,10 +281,10 @@ final class TabStore: ObservableObject {
         save()
     }
 
-    /// Sets the shift-start hour. Clamped to 0–12; higher values would put
-    /// rollover in the middle of the afternoon, which nobody wants.
+    /// Sets the shift-start hour. Clamped to 0–23 so day-shift bartenders
+    /// (rollover at 6 PM, say) are supported alongside late-night ones.
     func setShiftStartHour(_ hour: Int) {
-        shiftStartHour = min(max(0, hour), 12)
+        shiftStartHour = min(max(0, hour), 23)
         // Re-evaluate rollover in case the new cutoff moves the boundary.
         rollOverIfNeeded()
         save()

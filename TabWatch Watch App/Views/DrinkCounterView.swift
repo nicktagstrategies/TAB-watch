@@ -30,11 +30,13 @@ struct DrinkCounterView: View {
                     .frame(maxWidth: .infinity, minHeight: 28)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Add \(drink.name)")
 
             Image(systemName: drink.symbolName)
                 .font(.system(size: 28))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 28)
+                .accessibilityHidden(true)
 
             // Spacer that matches the height of the "minus" half of the
             // filled capsule so all three columns line up vertically.
@@ -52,16 +54,19 @@ struct DrinkCounterView: View {
                     .frame(maxWidth: .infinity, minHeight: 24)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Add \(drink.name)")
 
             Text("\(count)")
                 .font(.system(size: 32, weight: .bold))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
+                .accessibilityLabel("\(count) \(drink.name)")
 
             Image(systemName: drink.symbolName)
                 .font(.system(size: 16))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
 
             Button(action: onDecrement) {
                 Image(systemName: "minus")
@@ -70,6 +75,7 @@ struct DrinkCounterView: View {
                     .frame(maxWidth: .infinity, minHeight: 24)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(drink.name)")
         }
         .padding(.vertical, 6)
         .background(

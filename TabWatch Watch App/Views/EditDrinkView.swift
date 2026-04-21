@@ -1,18 +1,31 @@
 import SwiftUI
 
 /// Single-screen drink editor: name, icon from a fixed palette, price.
-/// Auto-saves every change via `store.updateDrink` — no "Save" button to
-/// miss. If the drink is removed out from under us (rare, but e.g. swipe-
-/// delete from a previous screen), this pops back.
+/// Icon taps and Stepper ticks commit to the store immediately (discrete
+/// events); the name TextField uses local `@State` and commits on submit
+/// or on disappear to avoid a UserDefaults write per keystroke — which
+/// also keeps the store consistent while Scribble is emitting partials.
 struct EditDrinkView: View {
     let drinkID: UUID
     @EnvironmentObject private var store: TabStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var nameDraft: String = ""
+    @State private var draftLoaded = false
+
     var body: some View {
         if let drink = store.drink(id: drinkID) {
             editor(for: drink)
                 .navigationTitle(drink.name.isEmpty ? "Drink" : drink.name)
+                .onAppear {
+                    // Load the draft exactly once so re-entering the view
+                    // from a deeper push doesn't clobber in-progress edits.
+                    if !draftLoaded {
+                        nameDraft = drink.name
+                        draftLoaded = true
+                    }
+                }
+                .onDisappear { commitName() }
         } else {
             Color.clear.onAppear { dismiss() }
         }
@@ -22,9 +35,10 @@ struct EditDrinkView: View {
     private func editor(for drink: DrinkKind) -> some View {
         List {
             Section {
-                TextField("Name", text: nameBinding(for: drink))
+                TextField("Name", text: $nameDraft)
                     .font(.headline)
                     .submitLabel(.done)
+                    .onSubmit { commitName() }
             }
 
             Section("Icon") {
@@ -61,15 +75,13 @@ struct EditDrinkView: View {
         }
     }
 
-    private func nameBinding(for drink: DrinkKind) -> Binding<String> {
-        Binding(
-            get: { drink.name },
-            set: { newValue in
-                var updated = drink
-                updated.name = newValue
-                store.updateDrink(updated)
-            }
-        )
+    private func commitName() {
+        guard let drink = store.drink(id: drinkID) else { return }
+        let trimmed = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != drink.name else { return }
+        var updated = drink
+        updated.name = trimmed
+        store.updateDrink(updated)
     }
 
     private func priceBinding(for drink: DrinkKind) -> Binding<Double> {
@@ -119,7 +131,23 @@ private struct IconGrid: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Self.label(for: symbol))
+                .accessibilityAddTraits(symbol == selected ? .isSelected : [])
             }
+        }
+    }
+
+    /// Human-readable VoiceOver labels for the palette. Keep in sync with
+    /// `DrinkKind.symbolPalette`.
+    private static func label(for symbol: String) -> String {
+        switch symbol {
+        case "mug.fill":                           return "Beer mug"
+        case "wineglass.fill":                     return "Wine glass"
+        case "waterbottle.fill":                   return "Bottle"
+        case "takeoutbag.and.cup.and.straw.fill":  return "Cocktail"
+        case "drop.fill":                          return "Shot"
+        case "cup.and.heat.waves.fill":            return "Hot drink"
+        default:                                   return symbol
         }
     }
 }

@@ -121,7 +121,7 @@ private struct ShiftStartRow: View {
     @EnvironmentObject private var store: TabStore
 
     var body: some View {
-        Stepper(value: binding, in: 0...12, step: 1) {
+        Stepper(value: binding, in: 0...23, step: 1) {
             HStack {
                 Text("Day starts")
                 Spacer()
@@ -141,9 +141,11 @@ private struct ShiftStartRow: View {
 
     static func hourLabel(_ hour: Int) -> String {
         switch hour {
-        case 0:      return "12 AM"
-        case 12:     return "12 PM"
-        default:     return "\(hour) AM"
+        case 0:         return "12 AM"
+        case 12:        return "12 PM"
+        case 1...11:    return "\(hour) AM"
+        case 13...23:   return "\(hour - 12) PM"
+        default:        return "\(hour):00"
         }
     }
 }

@@ -1,0 +1,32 @@
+## macOS / Xcode
+
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+## XcodeGen generated project
+
+# Regenerate with: `xcodegen generate`
+TabWatch.xcodeproj/
+
+## Build output
+
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Swift Package Manager
+
+.build/
+.swiftpm/
+Package.resolved
+
+## Misc
+
+*.log
+*.pid

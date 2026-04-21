@@ -1,0 +1,31 @@
+name: TabWatch
+options:
+  bundleIdPrefix: com.tabwatch
+  deploymentTarget:
+    watchOS: "10.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  TabWatch Watch App:
+    type: application
+    platform: watchOS
+    sources:
+      - path: TabWatch Watch App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tabwatch.watchapp
+        INFOPLIST_KEY_WKApplication: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown"
+        INFOPLIST_KEY_CFBundleDisplayName: "TabWatch"
+        TARGETED_DEVICE_FAMILY: "4"
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

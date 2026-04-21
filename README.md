@@ -88,6 +88,22 @@ TabWatch Watch App/
     └── SettingsView.swift     # Drinks list, Tax, Shift, Today, confirms
 ```
 
+## Complication & Smart Stack widget
+
+A bundled widget extension surfaces today's total, open-tab count, and
+your top tab's running subtotal as a watch-face complication
+(`accessoryCircular`, `accessoryRectangular`, `accessoryInline`,
+`accessoryCorner`) and in the Smart Stack on wrist raise. The
+rectangular layout has an inline `+` button that increments your first
+configured drink on the most-recent open tab — zero-tap rounds from the
+watch face.
+
+The widget reads the same `TabStore` data the app writes through a
+shared App Group (`group.com.tabwatch.shared`). Both targets have
+entitlement files pre-populated; **you'll need to pick your Apple
+Developer team in Xcode → Signing & Capabilities** for both targets so
+the App Group capability gets provisioned.
+
 ## Building
 
 You need macOS with Xcode 26+ (for the watchOS 26 SDK — Liquid Glass

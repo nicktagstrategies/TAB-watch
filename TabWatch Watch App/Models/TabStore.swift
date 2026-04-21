@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 
 /// Running "sales today" rollup. Rolls over when the "business day" changes,
 /// where a business day is `[shiftStartHour, shiftStartHour + 24h)` instead
@@ -160,7 +161,16 @@ final class TabStore: ObservableObject {
         ]
     }
 
-    init(defaults: UserDefaults = .standard) {
+    /// App Group suite shared between the watch app and the widget
+    /// extension so the complication reads the same data the app writes.
+    /// Falls back to `.standard` when the entitlement is missing (e.g.
+    /// previewing without a signed target) so callers don't crash.
+    static let appGroupID = "group.com.tabwatch.shared"
+    static var sharedDefaults: UserDefaults {
+        UserDefaults(suiteName: appGroupID) ?? .standard
+    }
+
+    init(defaults: UserDefaults = TabStore.sharedDefaults) {
         self.defaults = defaults
         load()
         rollOverIfNeeded()
@@ -613,5 +623,9 @@ final class TabStore: ObservableObject {
         if let data = try? JSONEncoder().encode(recentClosures) {
             defaults.set(data, forKey: recentClosuresKey)
         }
+        // Poke any surfaces that read from the shared UserDefaults suite —
+        // the watch-face complication and Smart Stack widget. No-op when
+        // no widgets are installed, so the cost is negligible.
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

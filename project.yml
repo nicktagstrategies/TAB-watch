@@ -19,6 +19,8 @@ targets:
     platform: watchOS
     sources:
       - path: TabWatch Watch App
+    dependencies:
+      - target: TabWatch Widget
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tabwatch.watchapp
@@ -29,3 +31,24 @@ targets:
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_ENTITLEMENTS: TabWatch Watch App/TabWatch.entitlements
+
+  TabWatch Widget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: TabWatch Widget
+      # Shared models so the widget can read + mutate the same UserDefaults
+      # suite the main app writes. Kept to the bare minimum to keep widget
+      # process launches fast.
+      - path: TabWatch Watch App/Models/Tab.swift
+      - path: TabWatch Watch App/Models/DrinkKind.swift
+      - path: TabWatch Watch App/Models/TabStore.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tabwatch.watchapp.widget
+        INFOPLIST_FILE: TabWatch Widget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "4"
+        CODE_SIGN_ENTITLEMENTS: TabWatch Widget/TabWatch Widget.entitlements
+        SKIP_INSTALL: NO

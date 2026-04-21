@@ -6,14 +6,23 @@ totals the bill as you go.
 
 ## What it does
 
-- **Home screen** — today's date, list of open tabs, "Add Tab +" to start a
-  new one.
+- **Home screen** — today's date, running "Today: $X.XX" from closed tabs,
+  list of open tabs, "Add Tab +" to start a new one, and a gear icon in the
+  top-right for Settings.
 - **New Tab** — type a name, tap Add.
 - **Tab detail** — a row of drink counters (Bottle / Beer / Wine). Each one is
   a big plus button when the count is 0, and expands to a `+ / number / icon /
   -` capsule once you start counting. Running total ($) shown at the top.
-- **Close Out** — finishes the tab and removes it from the list. **Delete**
-  throws it away without closing.
+  Tap `+` / `-` for a haptic click.
+- **Close Out** (green) — finishes the tab, records its total into today's
+  sales, plays a success haptic, and pops back.
+- **Delete** (orange outline) — throws the tab away without recording it.
+  Use this for mistakes.
+- **Settings** — per-drink price Stepper (digital crown), today's sales
+  summary, and a "Reset Today" button. Prices otherwise persist across
+  sessions.
+- **Daily rollover** — the "Today" total resets automatically when the
+  calendar day changes.
 
 ## Project layout
 
@@ -24,16 +33,18 @@ Source lives in `TabWatch Watch App/`. The Xcode project is generated from
 ```
 TabWatch Watch App/
 ├── TabWatchApp.swift          # @main entry point
-├── ContentView.swift          # Root navigation
+├── ContentView.swift          # Root NavigationStack
+├── Haptics.swift              # WKInterfaceDevice wrapper
 ├── Models/
-│   ├── DrinkKind.swift        # Bottle / Beer / Wine + prices
+│   ├── DrinkKind.swift        # Bottle / Beer / Wine + default prices
 │   ├── Tab.swift              # One customer tab
-│   └── TabStore.swift         # Persistence via UserDefaults (JSON)
+│   └── TabStore.swift         # Tabs, prices, today's-sales rollup
 └── Views/
-    ├── TabListView.swift      # Home screen
+    ├── TabListView.swift      # Home screen + Route enum
     ├── NewTabView.swift       # Name entry
     ├── TabDetailView.swift    # Counters + Close Out + Delete
-    └── DrinkCounterView.swift # Single drink capsule
+    ├── DrinkCounterView.swift # Single drink capsule
+    └── SettingsView.swift     # Price editor + Today summary
 ```
 
 ## Building
@@ -51,6 +62,17 @@ simulator or a paired Apple Watch.
 
 ## Customizing prices
 
-Drink prices live in `Models/DrinkKind.swift` as defaults. The store persists
-any edits made at runtime (see `TabStore.prices`), so you can extend the UI to
-edit them later without touching the model.
+Open **Settings** from the gear icon in the top-right of the home screen.
+Each drink has a Stepper — turn the digital crown or tap `+` / `-` to change
+the price in $0.25 increments. Defaults live in `Models/DrinkKind.swift`.
+
+## Known gaps
+
+- Only aggregate sales for today are tracked — there's no per-tab history of
+  who bought what after Close Out.
+- Drink kinds are hard-coded to Bottle / Beer / Wine. Adding Cocktail / Shot
+  for AMFs and Jacks is straightforward (add cases to `DrinkKind`), but may
+  need a layout rethink if more than ~4 drinks are visible at once on the
+  smallest watch.
+- App icon is an empty placeholder asset. Drop a 1024×1024 PNG into
+  `Assets.xcassets/AppIcon.appiconset/` and reference it in `Contents.json`.

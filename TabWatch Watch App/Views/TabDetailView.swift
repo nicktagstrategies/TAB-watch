@@ -10,7 +10,7 @@ struct TabDetailView: View {
             content(for: tab)
                 .navigationTitle(tab.name)
         } else {
-            // Tab was removed (Close Out / Delete) — pop back.
+            // Tab was closed out or deleted — pop back.
             Color.clear.onAppear { dismiss() }
         }
     }
@@ -26,14 +26,21 @@ struct TabDetailView: View {
                         DrinkCounterView(
                             kind: kind,
                             count: tab.count(of: kind),
-                            onIncrement: { store.increment(kind, for: tab.id) },
-                            onDecrement: { store.decrement(kind, for: tab.id) }
+                            onIncrement: {
+                                Haptics.click()
+                                store.increment(kind, for: tab.id)
+                            },
+                            onDecrement: {
+                                Haptics.click()
+                                store.decrement(kind, for: tab.id)
+                            }
                         )
                     }
                 }
 
                 Button {
-                    store.remove(id: tab.id)
+                    Haptics.success()
+                    store.closeOut(id: tab.id)
                 } label: {
                     Text("Close Out")
                         .font(.headline)
@@ -47,7 +54,8 @@ struct TabDetailView: View {
                 .padding(.top, 8)
 
                 Button {
-                    store.remove(id: tab.id)
+                    Haptics.failure()
+                    store.delete(id: tab.id)
                 } label: {
                     Text("Delete")
                         .font(.headline)

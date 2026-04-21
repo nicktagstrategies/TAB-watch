@@ -1,19 +1,23 @@
 import SwiftUI
 
+/// Everything reachable from the home screen, routed through a single
+/// `navigationDestination(for:)` so multiple push sources coexist.
+enum Route: Hashable {
+    case newTab
+    case settings
+    case tab(Tab.ID)
+}
+
 struct TabListView: View {
     @EnvironmentObject private var store: TabStore
-    @State private var showingNewTab = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                Text(Self.headerDateString(for: Date()))
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                header
 
                 ForEach(store.tabs) { tab in
-                    NavigationLink(value: tab.id) {
+                    NavigationLink(value: Route.tab(tab.id)) {
                         Text(tab.name)
                             .font(.headline)
                             .foregroundStyle(.black)
@@ -25,9 +29,7 @@ struct TabListView: View {
                     .buttonStyle(.plain)
                 }
 
-                Button {
-                    showingNewTab = true
-                } label: {
+                NavigationLink(value: Route.newTab) {
                     HStack(spacing: 6) {
                         Text("Add Tab")
                         Image(systemName: "plus")
@@ -43,12 +45,34 @@ struct TabListView: View {
             }
             .padding(.horizontal, 4)
         }
-        .navigationDestination(isPresented: $showingNewTab) {
-            NewTabView()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: Route.settings) {
+                    Image(systemName: "gearshape.fill")
+                }
+            }
         }
-        .navigationDestination(for: Tab.ID.self) { tabID in
-            TabDetailView(tabID: tabID)
+        .navigationDestination(for: Route.self) { route in
+            switch route {
+            case .newTab:        NewTabView()
+            case .settings:      SettingsView()
+            case .tab(let id):   TabDetailView(tabID: id)
+            }
         }
+    }
+
+    private var header: some View {
+        VStack(spacing: 2) {
+            Text(Self.headerDateString(for: Date()))
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            if store.sales.total > 0 {
+                Text("Today: \(SettingsView.currencyString(store.sales.total))")
+                    .font(.caption2)
+                    .foregroundStyle(Color(red: 0.09, green: 0.62, blue: 0.36))
+            }
+        }
+        .padding(.top, 4)
     }
 
     /// "July 9th 2025"

@@ -1,13 +1,34 @@
 import Foundation
 import SwiftUI
 
+/// Running "sales today" rollup. Resets automatically when the stored date
+/// is no longer the same calendar day as `now`.
+struct DailySales: Codable, Equatable {
+    var date: Date
+    var total: Decimal
+    var closedTabs: Int
+
+    static let zero = DailySales(date: .distantPast, total: 0, closedTabs: 0)
+
+    /// Returns `self` if the stored date is today, otherwise a fresh zero
+    /// value dated to `now`.
+    func rolledOver(to now: Date, calendar: Calendar = .current) -> DailySales {
+        if calendar.isDate(date, inSameDayAs: now) {
+            return self
+        }
+        return DailySales(date: now, total: 0, closedTabs: 0)
+    }
+}
+
 @MainActor
 final class TabStore: ObservableObject {
     @Published private(set) var tabs: [Tab] = []
     @Published var prices: [DrinkKind: Decimal] = TabStore.defaultPrices
+    @Published private(set) var sales: DailySales = .zero
 
     private let tabsKey = "TabWatch.tabs.v1"
     private let pricesKey = "TabWatch.prices.v1"
+    private let salesKey = "TabWatch.sales.v1"
     private let defaults: UserDefaults
 
     static var defaultPrices: [DrinkKind: Decimal] {
@@ -17,9 +38,10 @@ final class TabStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         load()
+        rollOverIfNeeded()
     }
 
-    // MARK: - Mutations
+    // MARK: - Tab mutations
 
     func addTab(name: String) -> Tab {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,9 +64,46 @@ final class TabStore: ObservableObject {
         }
     }
 
-    func remove(id: Tab.ID) {
+    /// "Close Out": removes the tab and adds its total to today's sales.
+    /// Use this when the customer paid.
+    func closeOut(id: Tab.ID) {
+        guard let tab = tab(id: id) else { return }
+        let tabTotal = tab.total(using: prices)
+        rollOverIfNeeded()
+        sales.total += tabTotal
+        sales.closedTabs += 1
         tabs.removeAll { $0.id == id }
         save()
+    }
+
+    /// "Delete": throw the tab away without recording the sale. Use this for
+    /// mistakes.
+    func delete(id: Tab.ID) {
+        tabs.removeAll { $0.id == id }
+        save()
+    }
+
+    // MARK: - Price mutations
+
+    func setPrice(_ price: Decimal, for kind: DrinkKind) {
+        prices[kind] = max(0, price)
+        save()
+    }
+
+    // MARK: - Sales
+
+    /// Manually clear today's rolled-up total. The daily auto-rollover handles
+    /// this at midnight; this is for "start fresh now".
+    func resetTodaysSales() {
+        sales = DailySales(date: Date(), total: 0, closedTabs: 0)
+        save()
+    }
+
+    private func rollOverIfNeeded(now: Date = Date()) {
+        let rolled = sales.rolledOver(to: now)
+        if rolled != sales {
+            sales = rolled
+        }
     }
 
     // MARK: - Lookups
@@ -76,6 +135,10 @@ final class TabStore: ObservableObject {
            let decoded = try? JSONDecoder().decode([DrinkKind: Decimal].self, from: data) {
             prices = decoded
         }
+        if let data = defaults.data(forKey: salesKey),
+           let decoded = try? JSONDecoder().decode(DailySales.self, from: data) {
+            sales = decoded
+        }
     }
 
     private func save() {
@@ -84,6 +147,9 @@ final class TabStore: ObservableObject {
         }
         if let data = try? JSONEncoder().encode(prices) {
             defaults.set(data, forKey: pricesKey)
+        }
+        if let data = try? JSONEncoder().encode(sales) {
+            defaults.set(data, forKey: salesKey)
         }
     }
 }

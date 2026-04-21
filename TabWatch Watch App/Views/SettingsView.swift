@@ -1,15 +1,40 @@
 import SwiftUI
 
-/// Price editor. One Stepper per drink, turned via the digital crown.
-/// Defaults to $0.25 increments; hold the crown for fast scrubbing.
+/// Top-level Settings screen. Drinks are edited via a push into
+/// `EditDrinkView`; tax and shift are inline Steppers.
 struct SettingsView: View {
     @EnvironmentObject private var store: TabStore
 
     var body: some View {
         List {
-            Section("Prices") {
-                ForEach(DrinkKind.allCases) { kind in
-                    PriceRow(kind: kind)
+            Section("Drinks") {
+                ForEach(store.drinks) { drink in
+                    NavigationLink(value: Route.editDrink(drink.id)) {
+                        HStack {
+                            Image(systemName: drink.symbolName)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            Text(drink.name)
+                            Spacer()
+                            Text(Self.currencyString(drink.price))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .onDelete { indexSet in
+                    for i in indexSet {
+                        store.removeDrink(id: store.drinks[i].id)
+                    }
+                }
+
+                if store.drinks.count < TabStore.maxDrinks {
+                    Button {
+                        Haptics.click()
+                        store.addDrink()
+                    } label: {
+                        Label("Add Drink", systemImage: "plus")
+                    }
                 }
             }
 
@@ -116,41 +141,10 @@ private struct ShiftStartRow: View {
 
     static func hourLabel(_ hour: Int) -> String {
         switch hour {
-        case 0:         return "12 AM"
-        case 12:        return "12 PM"
-        case 1...11:    return "\(hour) AM"
-        default:        return "\(hour) AM"
+        case 0:      return "12 AM"
+        case 12:     return "12 PM"
+        default:     return "\(hour) AM"
         }
-    }
-}
-
-private struct PriceRow: View {
-    let kind: DrinkKind
-    @EnvironmentObject private var store: TabStore
-
-    var body: some View {
-        Stepper(value: binding, in: 0...100, step: 0.25) {
-            HStack {
-                Image(systemName: kind.symbolName)
-                    .foregroundStyle(.secondary)
-                Text(kind.displayName)
-                Spacer()
-                Text(SettingsView.currencyString(Decimal(currentPrice)))
-                    .monospacedDigit()
-            }
-        }
-    }
-
-    private var currentPrice: Double {
-        let decimal = store.prices[kind] ?? kind.defaultPrice
-        return NSDecimalNumber(decimal: decimal).doubleValue
-    }
-
-    private var binding: Binding<Double> {
-        Binding(
-            get: { currentPrice },
-            set: { store.setPrice(Decimal($0), for: kind) }
-        )
     }
 }
 

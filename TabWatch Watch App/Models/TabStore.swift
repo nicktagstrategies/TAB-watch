@@ -59,7 +59,10 @@ struct ClosedTabSnapshot: Equatable {
 @MainActor
 final class TabStore: ObservableObject {
     @Published private(set) var tabs: [Tab] = []
-    @Published var prices: [DrinkKind: Decimal] = TabStore.defaultPrices
+    /// Ordered list of drink kinds. Each carries its own price; there's no
+    /// separate price dictionary. Order matters — it's the order drinks
+    /// appear in the counter row.
+    @Published private(set) var drinks: [DrinkKind] = TabStore.defaultDrinks
     @Published private(set) var sales: DailySales = .zero
     /// Sales-tax fraction. `0.0825` = 8.25%. Defaults to 0 so tax display
     /// only shows up once the user opts in from Settings.
@@ -70,15 +73,24 @@ final class TabStore: ObservableObject {
     /// Most recent Close Out / Delete, available for undo within 30 s.
     @Published private(set) var lastClosed: ClosedTabSnapshot?
 
-    private let tabsKey = "TabWatch.tabs.v1"
-    private let pricesKey = "TabWatch.prices.v1"
+    /// Hard cap so the counter row stays readable on a 40mm watch.
+    static let maxDrinks = 4
+
+    private let tabsKey = "TabWatch.tabs.v2"
+    private let drinksKey = "TabWatch.drinks.v1"
     private let salesKey = "TabWatch.sales.v1"
     private let taxRateKey = "TabWatch.taxRate.v1"
     private let shiftStartHourKey = "TabWatch.shiftStartHour.v1"
     private let defaults: UserDefaults
 
-    static var defaultPrices: [DrinkKind: Decimal] {
-        Dictionary(uniqueKeysWithValues: DrinkKind.allCases.map { ($0, $0.defaultPrice) })
+    /// Ships with her vocabulary, not ours. She said "beers / AMFs /
+    /// Jacks"; AMF is a cocktail, Jack is usually a shot.
+    static var defaultDrinks: [DrinkKind] {
+        [
+            DrinkKind(name: "Beer",     symbolName: "mug.fill",                           price: 6.50),
+            DrinkKind(name: "Shot",     symbolName: "drop.fill",                          price: 7.00),
+            DrinkKind(name: "Cocktail", symbolName: "takeoutbag.and.cup.and.straw.fill",  price: 10.00),
+        ]
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -123,16 +135,17 @@ final class TabStore: ObservableObject {
         return "\(prefix)\(n)"
     }
 
-    func increment(_ kind: DrinkKind, for id: Tab.ID) {
+    func increment(_ drinkID: UUID, for id: Tab.ID) {
         update(id) { tab in
-            tab.counts[kind, default: 0] += 1
+            tab.counts[drinkID.uuidString, default: 0] += 1
         }
     }
 
-    func decrement(_ kind: DrinkKind, for id: Tab.ID) {
+    func decrement(_ drinkID: UUID, for id: Tab.ID) {
         update(id) { tab in
-            let current = tab.counts[kind, default: 0]
-            tab.counts[kind] = max(0, current - 1)
+            let key = drinkID.uuidString
+            let current = tab.counts[key, default: 0]
+            tab.counts[key] = max(0, current - 1)
         }
     }
 
@@ -142,7 +155,7 @@ final class TabStore: ObservableObject {
     func closeOut(id: Tab.ID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs[index]
-        let collected = tab.totalWithTax(using: prices, rate: taxRate)
+        let collected = tab.totalWithTax(using: drinks, rate: taxRate)
         rollOverIfNeeded()
         sales.total += collected
         sales.closedTabs += 1
@@ -201,12 +214,44 @@ final class TabStore: ObservableObject {
         lastClosed = nil
     }
 
-    // MARK: - Price mutations
+    // MARK: - Drink mutations
 
-    func setPrice(_ price: Decimal, for kind: DrinkKind) {
-        prices[kind] = max(0, price)
+    /// Appends a new drink. No-op past `maxDrinks`. Returns the new drink so
+    /// callers can route to an edit screen.
+    @discardableResult
+    func addDrink() -> DrinkKind? {
+        guard drinks.count < Self.maxDrinks else { return nil }
+        let drink = DrinkKind(
+            name: "New Drink",
+            symbolName: DrinkKind.symbolPalette.first ?? "mug.fill",
+            price: 6.00
+        )
+        drinks.append(drink)
+        save()
+        return drink
+    }
+
+    /// Removes the drink and prunes count entries from all open tabs so the
+    /// subtotals don't silently ignore orphaned keys.
+    func removeDrink(id: UUID) {
+        drinks.removeAll { $0.id == id }
+        for i in tabs.indices {
+            tabs[i].counts[id.uuidString] = nil
+        }
         save()
     }
+
+    func updateDrink(_ drink: DrinkKind) {
+        guard let index = drinks.firstIndex(where: { $0.id == drink.id }) else { return }
+        drinks[index] = drink
+        save()
+    }
+
+    func drink(id: UUID) -> DrinkKind? {
+        drinks.first { $0.id == id }
+    }
+
+    // MARK: - Other settings
 
     /// Sets the tax rate as a fraction. Clamped to `0...0.25` (0–25%) since
     /// real rates don't go higher and it keeps Stepper UX sane.
@@ -249,11 +294,11 @@ final class TabStore: ObservableObject {
     }
 
     func total(for id: Tab.ID) -> Decimal {
-        tab(id: id)?.total(using: prices) ?? 0
+        tab(id: id)?.total(using: drinks) ?? 0
     }
 
     func totalWithTax(for id: Tab.ID) -> Decimal {
-        tab(id: id)?.totalWithTax(using: prices, rate: taxRate) ?? 0
+        tab(id: id)?.totalWithTax(using: drinks, rate: taxRate) ?? 0
     }
 
     // MARK: - Persistence
@@ -267,13 +312,14 @@ final class TabStore: ObservableObject {
     }
 
     private func load() {
+        if let data = defaults.data(forKey: drinksKey),
+           let decoded = try? JSONDecoder().decode([DrinkKind].self, from: data),
+           !decoded.isEmpty {
+            drinks = decoded
+        }
         if let data = defaults.data(forKey: tabsKey),
            let decoded = try? JSONDecoder().decode([Tab].self, from: data) {
             tabs = decoded
-        }
-        if let data = defaults.data(forKey: pricesKey),
-           let decoded = try? JSONDecoder().decode([DrinkKind: Decimal].self, from: data) {
-            prices = decoded
         }
         if let data = defaults.data(forKey: salesKey),
            let decoded = try? JSONDecoder().decode(DailySales.self, from: data) {
@@ -293,8 +339,8 @@ final class TabStore: ObservableObject {
         if let data = try? JSONEncoder().encode(tabs) {
             defaults.set(data, forKey: tabsKey)
         }
-        if let data = try? JSONEncoder().encode(prices) {
-            defaults.set(data, forKey: pricesKey)
+        if let data = try? JSONEncoder().encode(drinks) {
+            defaults.set(data, forKey: drinksKey)
         }
         if let data = try? JSONEncoder().encode(sales) {
             defaults.set(data, forKey: salesKey)

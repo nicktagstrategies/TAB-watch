@@ -8,7 +8,8 @@ totals the bill as you go.
 
 - **Home screen** — today's date, running "Today: $X.XX" from closed tabs,
   list of open tabs, "Add Tab +" to start a new one, and a gear icon in the
-  top-right for Settings.
+  top-right for Settings. A transient "Undo" capsule shows up for 30 s
+  after a Close Out or Delete in case the tap was a mistake.
 - **Add Tab** — one tap. The app auto-numbers ("Tab 1", "Tab 2", ...) and
   jumps straight into the counter screen. Numbers get recycled as tabs
   close out, so a busy shift stays at "Tab 1"–"Tab 8" instead of climbing
@@ -16,23 +17,28 @@ totals the bill as you go.
 - **Rename** — pencil icon in the top-right of the tab detail. Opens a
   text entry for a name like "Heather B" or "Red shirt, seat 4". Optional —
   skip it if you don't care.
-- **Tab detail** — a row of drink counters (Bottle / Beer / Wine). Each one is
-  a big plus button when the count is 0, and expands to a `+ / number / icon /
-  -` capsule once you start counting. Running total ($) shown at the top.
-  Tap `+` / `-` for a haptic click.
-- **Close Out** (green) — finishes the tab, records its total into today's
-  sales, plays a success haptic, and pops back.
+- **Tab detail** — a row of drink-counter capsules, one per configured
+  drink. Each is a big plus button when count == 0, and expands to a `+ /
+  number / icon / -` capsule once you start counting. Running total ($)
+  sits at the top. Tap `+` / `-` for a haptic click.
+- **Close Out** (green) — finishes the tab, adds the tax-inclusive total
+  to Today's sales, plays a success haptic, and pops back. Undoable for
+  30 s.
 - **Delete** (orange outline) — throws the tab away without recording it.
-  Use this for mistakes.
-- **Settings** — per-drink price Stepper (digital crown), tax-rate Stepper
-  (0.125% steps, 0–15%), today's sales summary, and a "Reset Today" button.
-  Prices and tax rate persist across sessions.
-- **Tax** — when the tax rate is set above 0, the tab detail's big dollar
-  amount includes tax and a small caption underneath breaks out `$24.50 +
-  $2.02 tax`. Close Out records the tax-inclusive amount into Today's
-  sales. Leave the rate at 0% to bake tax into your drink prices instead.
-- **Daily rollover** — the "Today" total resets automatically when the
-  calendar day changes.
+  For mistakes. Also undoable for 30 s.
+- **Settings — Drinks** — a list of drink kinds. Tap a row to edit the
+  name, icon (from a fixed palette of 6 SF Symbols), and price. Swipe
+  left to delete. "Add Drink" appends a new slot (capped at 4). Ships
+  with **Beer / Shot / Cocktail** as defaults.
+- **Settings — Tax** — Stepper in 0.125% steps (0–15%). When > 0, the
+  tab detail shows a tax-inclusive total with a `$24.50 + $2.02 tax`
+  caption; when 0%, prices are quoted as-entered.
+- **Settings — Shift** — configurable "Day starts" hour (0–12, default
+  **4 AM**). The "Today" total rolls over at this hour, not calendar
+  midnight, so a close-out at 1:30 AM still counts toward the prior
+  shift.
+- **Settings — Today** — running sales + tabs-closed count, with a
+  "Reset Today" button for starting fresh mid-shift.
 
 ## Project layout
 
@@ -42,19 +48,20 @@ Source lives in `TabWatch Watch App/`. The Xcode project is generated from
 
 ```
 TabWatch Watch App/
-├── TabWatchApp.swift          # @main entry point
-├── ContentView.swift          # Root NavigationStack
+├── TabWatchApp.swift          # @main + scenePhase observer
+├── ContentView.swift          # Hosts TabListView
 ├── Haptics.swift              # WKInterfaceDevice wrapper
 ├── Models/
-│   ├── DrinkKind.swift        # Bottle / Beer / Wine + default prices
-│   ├── Tab.swift              # One customer tab
-│   └── TabStore.swift         # Tabs, prices, today's-sales rollup
+│   ├── DrinkKind.swift        # struct { id, name, symbol, price } + SF Symbol palette
+│   ├── Tab.swift              # One customer tab; counts keyed by drink UUID
+│   └── TabStore.swift         # Tabs, drinks, sales, tax, shift, undo
 └── Views/
-    ├── TabListView.swift      # Home screen + Route enum + NavigationStack
+    ├── TabListView.swift      # Home screen + Route enum + UndoBanner
     ├── TabDetailView.swift    # Counters + Close Out + Delete + rename button
     ├── RenameTabView.swift    # Optional name entry for a tab
     ├── DrinkCounterView.swift # Single drink capsule
-    └── SettingsView.swift     # Price editor + Today summary
+    ├── EditDrinkView.swift    # Name / icon / price editor for one drink
+    └── SettingsView.swift     # Drinks list, Tax, Shift, Today
 ```
 
 ## Building
@@ -70,19 +77,20 @@ open TabWatch.xcodeproj
 In Xcode, select the **TabWatch Watch App** scheme and run it on a watchOS
 simulator or a paired Apple Watch.
 
-## Customizing prices
+## Customizing drinks
 
-Open **Settings** from the gear icon in the top-right of the home screen.
-Each drink has a Stepper — turn the digital crown or tap `+` / `-` to change
-the price in $0.25 increments. Defaults live in `Models/DrinkKind.swift`.
+Open **Settings → Drinks**. Tap a drink to change its name, icon, and
+price. Swipe left to delete. "Add Drink" appends a new one. Changes
+auto-save — no Save button to miss. The counter row caps at 4 drinks to
+stay readable on a 40mm watch.
 
 ## Known gaps
 
-- Only aggregate sales for today are tracked — there's no per-tab history of
-  who bought what after Close Out.
-- Drink kinds are hard-coded to Bottle / Beer / Wine. Adding Cocktail / Shot
-  for AMFs and Jacks is straightforward (add cases to `DrinkKind`), but may
-  need a layout rethink if more than ~4 drinks are visible at once on the
-  smallest watch.
+- Only aggregate sales for today are tracked — no per-tab history of who
+  bought what after Close Out.
+- Icon palette is fixed to 6 SF Symbols. Free-form symbol names would
+  render as broken placeholders she can't diagnose on the watch.
 - App icon is an empty placeholder asset. Drop a 1024×1024 PNG into
   `Assets.xcassets/AppIcon.appiconset/` and reference it in `Contents.json`.
+- No iPhone companion for bulk setup — prices/tax/drinks are all edited on
+  the watch.

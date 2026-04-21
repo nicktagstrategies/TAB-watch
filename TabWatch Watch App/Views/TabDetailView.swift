@@ -27,26 +27,35 @@ struct TabDetailView: View {
         ScrollView {
             VStack(spacing: 12) {
                 PriceHeader(
-                    subtotal: tab.total(using: store.prices),
-                    tax: tab.tax(using: store.prices, rate: store.taxRate),
-                    total: tab.totalWithTax(using: store.prices, rate: store.taxRate),
+                    subtotal: tab.total(using: store.drinks),
+                    tax: tab.tax(using: store.drinks, rate: store.taxRate),
+                    total: tab.totalWithTax(using: store.drinks, rate: store.taxRate),
                     showsTax: store.taxRate > 0
                 )
 
-                HStack(alignment: .top, spacing: 6) {
-                    ForEach(DrinkKind.allCases) { kind in
-                        DrinkCounterView(
-                            kind: kind,
-                            count: tab.count(of: kind),
-                            onIncrement: {
-                                Haptics.click()
-                                store.increment(kind, for: tab.id)
-                            },
-                            onDecrement: {
-                                Haptics.click()
-                                store.decrement(kind, for: tab.id)
-                            }
-                        )
+                if store.drinks.isEmpty {
+                    // She removed every drink in Settings. Give her a
+                    // hint rather than a blank row.
+                    Text("Add a drink in Settings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 20)
+                } else {
+                    HStack(alignment: .top, spacing: 6) {
+                        ForEach(store.drinks) { drink in
+                            DrinkCounterView(
+                                drink: drink,
+                                count: tab.count(of: drink),
+                                onIncrement: {
+                                    Haptics.click()
+                                    store.increment(drink.id, for: tab.id)
+                                },
+                                onDecrement: {
+                                    Haptics.click()
+                                    store.decrement(drink.id, for: tab.id)
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -140,10 +149,9 @@ private struct PriceHeader: View {
 #Preview {
     let store = TabStore()
     let tab = store.addTab(name: "Johnny Appleseed")
-    store.increment(.beer, for: tab.id)
-    store.increment(.beer, for: tab.id)
-    store.increment(.beer, for: tab.id)
-    store.increment(.wine, for: tab.id)
+    for drink in store.drinks.prefix(2) {
+        store.increment(drink.id, for: tab.id)
+    }
     return NavigationStack {
         TabDetailView(tabID: tab.id)
             .environmentObject(store)

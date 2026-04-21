@@ -7,6 +7,7 @@ enum Route: Hashable {
     case settings
     case tab(Tab.ID)
     case rename(Tab.ID)
+    case editDrink(UUID)
 }
 
 struct TabListView: View {
@@ -63,9 +64,10 @@ struct TabListView: View {
             }
             .navigationDestination(for: Route.self) { route in
                 switch route {
-                case .settings:       SettingsView()
-                case .tab(let id):    TabDetailView(tabID: id)
-                case .rename(let id): RenameTabView(tabID: id)
+                case .settings:           SettingsView()
+                case .tab(let id):        TabDetailView(tabID: id)
+                case .rename(let id):     RenameTabView(tabID: id)
+                case .editDrink(let id):  EditDrinkView(drinkID: id)
                 }
             }
         }

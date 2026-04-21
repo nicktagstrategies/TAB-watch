@@ -8,7 +8,7 @@ import SwiftUI
 /// - When `count > 0`, renders the full `+ / number / icon / -` capsule shown
 ///   in the mockups.
 struct DrinkCounterView: View {
-    let kind: DrinkKind
+    let drink: DrinkKind
     let count: Int
     let onIncrement: () -> Void
     let onDecrement: () -> Void
@@ -31,7 +31,7 @@ struct DrinkCounterView: View {
             }
             .buttonStyle(.plain)
 
-            Image(systemName: kind.symbolName)
+            Image(systemName: drink.symbolName)
                 .font(.system(size: 28))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 28)
@@ -58,7 +58,7 @@ struct DrinkCounterView: View {
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
 
-            Image(systemName: kind.symbolName)
+            Image(systemName: drink.symbolName)
                 .font(.system(size: 16))
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)

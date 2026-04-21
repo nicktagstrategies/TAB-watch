@@ -13,6 +13,10 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Tax") {
+                TaxRateRow()
+            }
+
             Section("Today") {
                 HStack {
                     Text("Sales")
@@ -41,6 +45,44 @@ struct SettingsView: View {
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 2
         return formatter.string(from: value as NSDecimalNumber) ?? "$0.00"
+    }
+}
+
+/// Tax-rate Stepper in 0.125% steps, range 0–15%. Display rounds to 3
+/// decimal places so rates like 8.875% (NYC) render cleanly.
+private struct TaxRateRow: View {
+    @EnvironmentObject private var store: TabStore
+
+    var body: some View {
+        Stepper(value: binding, in: 0...15, step: 0.125) {
+            HStack {
+                Text("Rate")
+                Spacer()
+                Text(formatted)
+                    .monospacedDigit()
+                    .foregroundStyle(store.taxRate > 0 ? .primary : .secondary)
+            }
+        }
+    }
+
+    private var currentPercent: Double {
+        NSDecimalNumber(decimal: store.taxRate * 100).doubleValue
+    }
+
+    private var binding: Binding<Double> {
+        Binding(
+            get: { currentPercent },
+            set: { store.setTaxRate(Decimal($0) / 100) }
+        )
+    }
+
+    private var formatted: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 3
+        let number = NSNumber(value: currentPercent)
+        return (formatter.string(from: number) ?? "0") + "%"
     }
 }
 

@@ -24,9 +24,13 @@ totals the bill as you go.
   sales, plays a success haptic, and pops back.
 - **Delete** (orange outline) — throws the tab away without recording it.
   Use this for mistakes.
-- **Settings** — per-drink price Stepper (digital crown), today's sales
-  summary, and a "Reset Today" button. Prices otherwise persist across
-  sessions.
+- **Settings** — per-drink price Stepper (digital crown), tax-rate Stepper
+  (0.125% steps, 0–15%), today's sales summary, and a "Reset Today" button.
+  Prices and tax rate persist across sessions.
+- **Tax** — when the tax rate is set above 0, the tab detail's big dollar
+  amount includes tax and a small caption underneath breaks out `$24.50 +
+  $2.02 tax`. Close Out records the tax-inclusive amount into Today's
+  sales. Leave the rate at 0% to bake tax into your drink prices instead.
 - **Daily rollover** — the "Today" total resets automatically when the
   calendar day changes.
 

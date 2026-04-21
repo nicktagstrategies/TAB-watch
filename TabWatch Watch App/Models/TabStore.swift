@@ -25,10 +25,14 @@ final class TabStore: ObservableObject {
     @Published private(set) var tabs: [Tab] = []
     @Published var prices: [DrinkKind: Decimal] = TabStore.defaultPrices
     @Published private(set) var sales: DailySales = .zero
+    /// Sales-tax fraction. `0.0825` = 8.25%. Defaults to 0 so tax display
+    /// only shows up once the user opts in from Settings.
+    @Published private(set) var taxRate: Decimal = 0
 
     private let tabsKey = "TabWatch.tabs.v1"
     private let pricesKey = "TabWatch.prices.v1"
     private let salesKey = "TabWatch.sales.v1"
+    private let taxRateKey = "TabWatch.taxRate.v1"
     private let defaults: UserDefaults
 
     static var defaultPrices: [DrinkKind: Decimal] {
@@ -90,13 +94,13 @@ final class TabStore: ObservableObject {
         }
     }
 
-    /// "Close Out": removes the tab and adds its total to today's sales.
-    /// Use this when the customer paid.
+    /// "Close Out": removes the tab and adds the amount collected (subtotal +
+    /// tax) to today's sales. Use this when the customer paid.
     func closeOut(id: Tab.ID) {
         guard let tab = tab(id: id) else { return }
-        let tabTotal = tab.total(using: prices)
+        let collected = tab.totalWithTax(using: prices, rate: taxRate)
         rollOverIfNeeded()
-        sales.total += tabTotal
+        sales.total += collected
         sales.closedTabs += 1
         tabs.removeAll { $0.id == id }
         save()
@@ -113,6 +117,13 @@ final class TabStore: ObservableObject {
 
     func setPrice(_ price: Decimal, for kind: DrinkKind) {
         prices[kind] = max(0, price)
+        save()
+    }
+
+    /// Sets the tax rate as a fraction. Clamped to `0...0.25` (0–25%) since
+    /// real rates don't go higher and it keeps Stepper UX sane.
+    func setTaxRate(_ rate: Decimal) {
+        taxRate = min(max(0, rate), Decimal(0.25))
         save()
     }
 
@@ -142,6 +153,10 @@ final class TabStore: ObservableObject {
         tab(id: id)?.total(using: prices) ?? 0
     }
 
+    func totalWithTax(for id: Tab.ID) -> Decimal {
+        tab(id: id)?.totalWithTax(using: prices, rate: taxRate) ?? 0
+    }
+
     // MARK: - Persistence
 
     private func update(_ id: Tab.ID, _ mutate: (inout Tab) -> Void) {
@@ -165,6 +180,10 @@ final class TabStore: ObservableObject {
            let decoded = try? JSONDecoder().decode(DailySales.self, from: data) {
             sales = decoded
         }
+        if let data = defaults.data(forKey: taxRateKey),
+           let decoded = try? JSONDecoder().decode(Decimal.self, from: data) {
+            taxRate = decoded
+        }
     }
 
     private func save() {
@@ -176,6 +195,9 @@ final class TabStore: ObservableObject {
         }
         if let data = try? JSONEncoder().encode(sales) {
             defaults.set(data, forKey: salesKey)
+        }
+        if let data = try? JSONEncoder().encode(taxRate) {
+            defaults.set(data, forKey: taxRateKey)
         }
     }
 }

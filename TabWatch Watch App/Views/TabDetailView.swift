@@ -26,7 +26,12 @@ struct TabDetailView: View {
     private func content(for tab: Tab) -> some View {
         ScrollView {
             VStack(spacing: 12) {
-                PriceHeader(total: tab.total(using: store.prices))
+                PriceHeader(
+                    subtotal: tab.total(using: store.prices),
+                    tax: tab.tax(using: store.prices, rate: store.taxRate),
+                    total: tab.totalWithTax(using: store.prices, rate: store.taxRate),
+                    showsTax: store.taxRate > 0
+                )
 
                 HStack(alignment: .top, spacing: 6) {
                     ForEach(DrinkKind.allCases) { kind in
@@ -81,31 +86,54 @@ struct TabDetailView: View {
 }
 
 /// Big `$26⁵⁰` header with the dollars big and the cents as a superscript,
-/// matching the first mockup. Hidden when the tab is empty.
+/// matching the first mockup. When `showsTax` is true and the tab is
+/// non-empty, a small `$24.50 + $2.00 tax` caption is shown underneath.
 private struct PriceHeader: View {
+    let subtotal: Decimal
+    let tax: Decimal
     let total: Decimal
+    let showsTax: Bool
 
     var body: some View {
-        let amount = NSDecimalNumber(decimal: total).doubleValue
-        let dollars = Int(amount)
-        let cents = Int((amount - Double(dollars)) * 100 + 0.5)
-
         if total > 0 {
-            HStack(alignment: .top, spacing: 2) {
-                Text("$")
-                    .font(.system(size: 22, weight: .bold))
-                Text("\(dollars)")
-                    .font(.system(size: 40, weight: .bold))
-                Text(String(format: "%02d", cents))
-                    .font(.system(size: 20, weight: .bold))
-                    .baselineOffset(18)
+            VStack(spacing: 2) {
+                bigTotal
+                if showsTax {
+                    Text("\(Self.currency(subtotal)) + \(Self.currency(tax)) tax")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .foregroundStyle(.white)
         } else {
             // Reserve the same vertical space so the counters don't jump
             // when the first drink is added.
             Color.clear.frame(height: 40)
         }
+    }
+
+    private var bigTotal: some View {
+        let amount = NSDecimalNumber(decimal: total).doubleValue
+        let dollars = Int(amount)
+        let cents = Int((amount - Double(dollars)) * 100 + 0.5)
+        return HStack(alignment: .top, spacing: 2) {
+            Text("$")
+                .font(.system(size: 22, weight: .bold))
+            Text("\(dollars)")
+                .font(.system(size: 40, weight: .bold))
+            Text(String(format: "%02d", cents))
+                .font(.system(size: 20, weight: .bold))
+                .baselineOffset(18)
+        }
+        .foregroundStyle(.white)
+    }
+
+    private static func currency(_ value: Decimal) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter.string(from: value as NSDecimalNumber) ?? "$0.00"
     }
 }
 

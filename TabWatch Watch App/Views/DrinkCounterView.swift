@@ -47,6 +47,10 @@ struct DrinkCounterView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add \(drink.name)")
+            // Active column is the watchOS Double Tap target — pour a
+            // beer, double-tap your fist, `+`. Only one primary action
+            // per view, so we gate on isActive.
+            .modifier(PrimaryActionIf(enabled: isActive))
 
             Image(systemName: drink.symbolName)
                 .font(.title2)
@@ -69,6 +73,7 @@ struct DrinkCounterView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add \(drink.name)")
+            .modifier(PrimaryActionIf(enabled: isActive))
 
             Text("\(count)")
                 .font(.system(.title, design: .rounded, weight: .bold))
@@ -96,5 +101,20 @@ struct DrinkCounterView: View {
         .foregroundStyle(.black)
         .padding(.vertical, 6)
         .glassEffect(.regular.tint(.white).interactive(), in: .capsule)
+    }
+}
+
+/// Conditional `.handGestureShortcut(.primaryAction)` — only the active
+/// drink's `+` gets wired to Double Tap, since watchOS allows a single
+/// primary-action target per view hierarchy.
+private struct PrimaryActionIf: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.handGestureShortcut(.primaryAction)
+        } else {
+            content
+        }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-struct Tab: Identifiable, Codable, Hashable {
+struct Tab: Identifiable, Codable, Hashable, Sendable {
     var id: UUID
     var name: String
     var createdAt: Date

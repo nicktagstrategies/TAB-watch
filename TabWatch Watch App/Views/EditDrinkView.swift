@@ -142,13 +142,13 @@ private struct IconGrid: View {
     /// `DrinkKind.symbolPalette`.
     private static func label(for symbol: String) -> String {
         switch symbol {
-        case "mug.fill":                           return "Beer mug"
-        case "wineglass.fill":                     return "Wine glass"
-        case "waterbottle.fill":                   return "Bottle"
-        case "takeoutbag.and.cup.and.straw.fill":  return "Cocktail"
-        case "drop.fill":                          return "Shot"
-        case "cup.and.heat.waves.fill":            return "Hot drink"
-        default:                                   return symbol
+        case "mug.fill":                return "Beer mug"
+        case "wineglass.fill":          return "Wine glass"
+        case "waterbottle.fill":        return "Bottle"
+        case "martiniglass.fill":       return "Cocktail"
+        case "drop.fill":               return "Shot"
+        case "cup.and.heat.waves.fill": return "Hot drink"
+        default:                        return symbol
         }
     }
 }

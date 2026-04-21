@@ -73,13 +73,13 @@ struct TabDetailView: View {
                         count: tab.count(of: drink),
                         isActive: drink.id == liveActiveID,
                         onIncrement: {
-                            Haptics.click()
+                            Haptics.increment()
                             activeDrinkID = drink.id
                             activeSince = Date()
                             store.increment(drink.id, for: tab.id)
                         },
                         onDecrement: {
-                            Haptics.click()
+                            Haptics.decrement()
                             activeDrinkID = drink.id
                             activeSince = Date()
                             store.decrement(drink.id, for: tab.id)
@@ -112,9 +112,15 @@ struct TabDetailView: View {
         guard let since = activeSince,
               Date().timeIntervalSince(since) < crownWindow else { return }
         if delta > 0 {
-            for _ in 0..<delta { store.increment(drinkID, for: tab.id) }
+            for _ in 0..<delta {
+                Haptics.increment()
+                store.increment(drinkID, for: tab.id)
+            }
         } else {
-            for _ in 0..<(-delta) { store.decrement(drinkID, for: tab.id) }
+            for _ in 0..<(-delta) {
+                Haptics.decrement()
+                store.decrement(drinkID, for: tab.id)
+            }
         }
         // Each crown action extends the window so a slow crank doesn't time out.
         activeSince = Date()

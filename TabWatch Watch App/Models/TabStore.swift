@@ -5,7 +5,7 @@ import SwiftUI
 /// where a business day is `[shiftStartHour, shiftStartHour + 24h)` instead
 /// of calendar midnight. A bartender whose shift ends at 2 AM wants 4 AM
 /// rollover, not 12 AM.
-struct DailySales: Codable, Equatable {
+struct DailySales: Codable, Equatable, Sendable {
     var date: Date
     var total: Decimal
     var closedTabs: Int
@@ -93,7 +93,7 @@ struct DailySales: Codable, Equatable {
 /// One-slot undo buffer for Close Out / Delete. Not persisted — if the app
 /// is killed, the window is gone. In memory it lives until the next
 /// close-out replaces it (or `expireLastClosed` clears it past 30 s).
-struct ClosedTabSnapshot: Equatable, Codable {
+struct ClosedTabSnapshot: Equatable, Codable, Sendable {
     let tab: Tab
     let originalIndex: Int
     /// For close-outs and walkers: the dollars to reverse on undo. Zero
@@ -156,7 +156,7 @@ final class TabStore: ObservableObject {
         [
             DrinkKind(name: "Beer",     symbolName: "mug.fill",                           price: 6.50),
             DrinkKind(name: "Shot",     symbolName: "drop.fill",                          price: 7.00),
-            DrinkKind(name: "Cocktail", symbolName: "takeoutbag.and.cup.and.straw.fill",  price: 10.00),
+            DrinkKind(name: "Cocktail", symbolName: "martiniglass.fill",                  price: 10.00),
         ]
     }
 

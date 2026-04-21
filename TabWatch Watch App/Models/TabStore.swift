@@ -43,6 +43,19 @@ struct DailySales: Codable, Equatable {
     }
 }
 
+/// One-slot undo buffer for Close Out / Delete. Not persisted — if the app
+/// is killed, the window is gone. In memory it lives until the next
+/// close-out replaces it (or `expireLastClosed` clears it past 30 s).
+struct ClosedTabSnapshot: Equatable {
+    let tab: Tab
+    let originalIndex: Int
+    let collectedAmount: Decimal   // 0 for deletes
+    let closedAt: Date
+    let wasDelete: Bool
+
+    static let undoWindow: TimeInterval = 30
+}
+
 @MainActor
 final class TabStore: ObservableObject {
     @Published private(set) var tabs: [Tab] = []
@@ -54,6 +67,8 @@ final class TabStore: ObservableObject {
     /// Hour (0–23) at which the "business day" rolls over. 4 AM fits a bar
     /// schedule — close-outs after midnight still count toward last night.
     @Published private(set) var shiftStartHour: Int = 4
+    /// Most recent Close Out / Delete, available for undo within 30 s.
+    @Published private(set) var lastClosed: ClosedTabSnapshot?
 
     private let tabsKey = "TabWatch.tabs.v1"
     private let pricesKey = "TabWatch.prices.v1"
@@ -122,22 +137,68 @@ final class TabStore: ObservableObject {
     }
 
     /// "Close Out": removes the tab and adds the amount collected (subtotal +
-    /// tax) to today's sales. Use this when the customer paid.
+    /// tax) to today's sales. Use this when the customer paid. The tab is
+    /// captured in `lastClosed` for a 30 s undo window.
     func closeOut(id: Tab.ID) {
-        guard let tab = tab(id: id) else { return }
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs[index]
         let collected = tab.totalWithTax(using: prices, rate: taxRate)
         rollOverIfNeeded()
         sales.total += collected
         sales.closedTabs += 1
-        tabs.removeAll { $0.id == id }
+        tabs.remove(at: index)
+        lastClosed = ClosedTabSnapshot(
+            tab: tab,
+            originalIndex: index,
+            collectedAmount: collected,
+            closedAt: Date(),
+            wasDelete: false
+        )
         save()
     }
 
-    /// "Delete": throw the tab away without recording the sale. Use this for
-    /// mistakes.
+    /// "Delete": throw the tab away without recording the sale. Captured in
+    /// `lastClosed` for a 30 s undo window in case the tap was a mistake.
     func delete(id: Tab.ID) {
-        tabs.removeAll { $0.id == id }
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs[index]
+        tabs.remove(at: index)
+        lastClosed = ClosedTabSnapshot(
+            tab: tab,
+            originalIndex: index,
+            collectedAmount: 0,
+            closedAt: Date(),
+            wasDelete: true
+        )
         save()
+    }
+
+    /// Restores the most recent Close Out / Delete. No-op if the 30 s window
+    /// has passed or there's nothing to undo.
+    func undoLast() {
+        guard let snap = lastClosed else { return }
+        guard Date().timeIntervalSince(snap.closedAt) < ClosedTabSnapshot.undoWindow else {
+            lastClosed = nil
+            return
+        }
+        let index = min(snap.originalIndex, tabs.count)
+        tabs.insert(snap.tab, at: index)
+        if !snap.wasDelete {
+            sales.total -= snap.collectedAmount
+            sales.closedTabs = max(0, sales.closedTabs - 1)
+        }
+        lastClosed = nil
+        save()
+    }
+
+    /// Clears `lastClosed` once it's outside the undo window. Safe to call
+    /// repeatedly — view-layer timers drive this.
+    func expireLastClosedIfNeeded() {
+        guard let snap = lastClosed,
+              Date().timeIntervalSince(snap.closedAt) >= ClosedTabSnapshot.undoWindow else {
+            return
+        }
+        lastClosed = nil
     }
 
     // MARK: - Price mutations

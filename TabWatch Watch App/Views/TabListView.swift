@@ -19,6 +19,8 @@ struct TabListView: View {
                 VStack(spacing: 12) {
                     header
 
+                    UndoBanner()
+
                     ForEach(store.tabs) { tab in
                         NavigationLink(value: Route.tab(tab.id)) {
                             Text(tab.name)
@@ -105,6 +107,63 @@ struct TabListView: View {
             default: return "th"
             }
         }
+    }
+}
+
+/// Transient "Undo — Tab 3 · 18s" capsule, visible for 30 s after a Close
+/// Out or Delete. TimelineView drives the countdown; when the window
+/// expires, the capsule asks the store to clear the snapshot so the next
+/// ScrollView rebuild drops the whole view.
+private struct UndoBanner: View {
+    @EnvironmentObject private var store: TabStore
+
+    var body: some View {
+        if let snap = store.lastClosed {
+            TimelineView(.periodic(from: snap.closedAt, by: 1)) { context in
+                let elapsed = context.date.timeIntervalSince(snap.closedAt)
+                let remaining = Int(ClosedTabSnapshot.undoWindow - elapsed)
+                if remaining > 0 {
+                    banner(for: snap, secondsLeft: remaining)
+                } else {
+                    // Window expired — clear the snapshot so this view
+                    // disappears. Mutating state from a body is normally
+                    // a no-no, but `expireLastClosedIfNeeded` is idempotent
+                    // and we're past the render pass when it runs.
+                    Color.clear
+                        .frame(height: 0)
+                        .onAppear { store.expireLastClosedIfNeeded() }
+                }
+            }
+        }
+    }
+
+    private func banner(for snap: ClosedTabSnapshot, secondsLeft: Int) -> some View {
+        Button {
+            Haptics.click()
+            store.undoLast()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.uturn.backward")
+                Text("Undo — \(snap.tab.name)")
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(secondsLeft)s")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                Capsule().fill(Color(white: 0.18))
+            )
+            .overlay(
+                Capsule().stroke(Color(white: 0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

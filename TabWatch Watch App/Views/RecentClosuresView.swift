@@ -43,8 +43,8 @@ struct RecentClosuresView: View {
                       ? (snap.wasWalker ? "figure.walk" : "trash")
                       : "checkmark.circle.fill")
                     .foregroundStyle(snap.wasDelete
-                                     ? (snap.wasWalker ? .orange : .secondary)
-                                     : Color(red: 0.09, green: 0.62, blue: 0.36))
+                                     ? (snap.wasWalker ? Color.orange : Color.secondary)
+                                     : Color.green)
                     .frame(width: 20)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(snap.tab.name)

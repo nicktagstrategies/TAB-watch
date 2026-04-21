@@ -90,7 +90,8 @@ TabWatch Watch App/
 
 ## Building
 
-You need macOS with Xcode 15+ (for watchOS 10 SDK). Then:
+You need macOS with Xcode 26+ (for the watchOS 26 SDK — Liquid Glass
+APIs). Then:
 
 ```sh
 brew install xcodegen          # one-time

@@ -24,13 +24,11 @@ struct RenameTabView: View {
             Button(action: save) {
                 Text("Save")
                     .font(.headline)
-                    .foregroundStyle(.black)
                     .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Capsule().fill(Color(white: 0.85)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .disabled(trimmed.isEmpty)
-            .opacity(trimmed.isEmpty ? 0.5 : 1)
             .padding(.horizontal, 4)
         }
         .navigationTitle("Rename")

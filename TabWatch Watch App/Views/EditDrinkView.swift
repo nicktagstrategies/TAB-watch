@@ -128,14 +128,10 @@ private struct IconGrid: View {
                 } label: {
                     Image(systemName: symbol)
                         .font(.title3)
-                        .foregroundStyle(symbol == selected ? Color.black : Color.white)
                         .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(symbol == selected ? Color(white: 0.85) : Color(white: 0.2))
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .tint(symbol == selected ? Color.accentColor : Color.white.opacity(0.15))
                 .accessibilityLabel(Self.label(for: symbol))
                 .accessibilityAddTraits(symbol == selected ? .isSelected : [])
             }

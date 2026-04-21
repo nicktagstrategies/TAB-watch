@@ -68,7 +68,7 @@ struct SettingsView: View {
                         Text("Tips")
                         Spacer()
                         Text(Self.currencyString(store.sales.tips))
-                            .foregroundStyle(Color(red: 0.09, green: 0.62, blue: 0.36))
+                            .foregroundStyle(.green)
                             .monospacedDigit()
                     }
                 }

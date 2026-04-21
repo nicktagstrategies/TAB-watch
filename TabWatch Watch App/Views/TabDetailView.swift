@@ -147,13 +147,11 @@ struct TabDetailView: View {
                 } label: {
                     Text("Close Out")
                         .font(.headline)
-                        .foregroundStyle(.black)
                         .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(
-                            Capsule().fill(Color(red: 0.09, green: 0.62, blue: 0.36))
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .controlSize(.large)
                 .padding(.top, 8)
                 .accessibilityLabel("Close out \(tab.name)")
 
@@ -163,13 +161,9 @@ struct TabDetailView: View {
                         NavigationLink(value: Route.split(tab.id)) {
                             Text("Split")
                                 .font(.caption)
-                                .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity, minHeight: 36)
-                                .background(
-                                    Capsule().stroke(Color.white, lineWidth: 2)
-                                )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glass)
                         .accessibilityLabel("Split \(tab.name)")
 
                         // Move is only useful if there's another tab to
@@ -179,30 +173,24 @@ struct TabDetailView: View {
                             NavigationLink(value: Route.move(tab.id)) {
                                 Text("Move")
                                     .font(.caption)
-                                    .foregroundStyle(.white)
                                     .frame(maxWidth: .infinity, minHeight: 36)
-                                    .background(
-                                        Capsule().stroke(Color.white, lineWidth: 2)
-                                    )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.glass)
                             .accessibilityLabel("Move from \(tab.name)")
                         }
                     }
                 }
 
-                Button {
+                Button(role: .destructive) {
                     deleteConfirmShown = true
                 } label: {
                     Text("Delete")
                         .font(.headline)
-                        .foregroundStyle(Color.orange)
                         .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(
-                            Capsule().stroke(Color.orange, lineWidth: 2)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .controlSize(.large)
                 .accessibilityLabel("Delete \(tab.name)")
             }
             .padding(.horizontal, 4)
@@ -319,18 +307,20 @@ private struct PriceHeader: View {
         let amount = NSDecimalNumber(decimal: total).doubleValue
         let dollars = Int(amount)
         let cents = Int((amount - Double(dollars)) * 100 + 0.5)
+        // Semantic font sizes so Dynamic Type scales the header and AOD
+        // dimming preserves contrast. The 18 pt baseline offset for cents
+        // stays — Dynamic Type spec doesn't offer a "superscript cents"
+        // style, so we keep this typographic trick.
         return HStack(alignment: .top, spacing: 2) {
             Text("$")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(.title3, design: .rounded, weight: .bold))
             Text("\(dollars)")
-                .font(.system(size: 40, weight: .bold))
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
             Text(String(format: "%02d", cents))
-                .font(.system(size: 20, weight: .bold))
-                .baselineOffset(18)
+                .font(.system(.title3, design: .rounded, weight: .bold))
+                .baselineOffset(14)
         }
-        .foregroundStyle(.white)
-        // 4-digit totals (`$1,234⁵⁰`) and even $100+ rounds would clip
-        // without a shrink budget on the narrow 40mm screen.
+        .foregroundStyle(.primary)
         .minimumScaleFactor(0.5)
         .lineLimit(1)
     }

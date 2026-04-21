@@ -36,26 +36,27 @@ struct DrinkCounterView: View {
     }
 
     private var emptyState: some View {
+        // Bare "+" + icon, no surface — the invitation to start counting.
+        // A glass capsule here would read as "this column is already in
+        // use", contradicting the count-zero signal.
         VStack(spacing: 10) {
             Button(action: onIncrement) {
                 Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(.white)
+                    .font(.system(.title2, weight: .bold))
                     .frame(maxWidth: .infinity, minHeight: 28)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add \(drink.name)")
 
             Image(systemName: drink.symbolName)
-                .font(.system(size: 28))
-                .foregroundStyle(.white)
+                .font(.title2)
                 .frame(maxWidth: .infinity, minHeight: 28)
                 .accessibilityHidden(true)
 
-            // Spacer that matches the height of the "minus" half of the
-            // filled capsule so all three columns line up vertically.
+            // Matches the filled capsule's "-" half so columns line up.
             Color.clear.frame(height: 28)
         }
+        .foregroundStyle(.primary)
         .frame(maxWidth: .infinity)
     }
 
@@ -63,39 +64,37 @@ struct DrinkCounterView: View {
         VStack(spacing: 4) {
             Button(action: onIncrement) {
                 Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.black)
+                    .font(.system(.title3, weight: .bold))
                     .frame(maxWidth: .infinity, minHeight: 24)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add \(drink.name)")
 
             Text("\(count)")
-                .font(.system(size: 32, weight: .bold))
+                .font(.system(.title, design: .rounded, weight: .bold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel("\(count) \(drink.name)")
 
             Image(systemName: drink.symbolName)
-                .font(.system(size: 16))
-                .foregroundStyle(.black)
+                .font(.caption)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
 
             Button(action: onDecrement) {
                 Image(systemName: "minus")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.black)
+                    .font(.system(.title3, weight: .bold))
                     .frame(maxWidth: .infinity, minHeight: 24)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Remove \(drink.name)")
         }
+        // High-contrast black content on a white-tinted interactive glass
+        // capsule. Matches the original mockups' "filled = focal point"
+        // feel, and picks up AOD + motion refraction for free.
+        .foregroundStyle(.black)
         .padding(.vertical, 6)
-        .background(
-            Capsule().fill(Color(white: 0.85))
-        )
+        .glassEffect(.regular.tint(.white).interactive(), in: .capsule)
     }
 }

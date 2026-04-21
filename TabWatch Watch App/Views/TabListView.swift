@@ -27,7 +27,9 @@ struct TabListView: View {
                         NavigationLink(value: Route.tab(tab.id)) {
                             TabRow(tab: tab)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.large)
+                        .tint(.white)
                     }
 
                     Button {
@@ -35,18 +37,12 @@ struct TabListView: View {
                         let tab = store.addTab()
                         path.append(Route.tab(tab.id))
                     } label: {
-                        HStack(spacing: 6) {
-                            Text("Add Tab")
-                            Image(systemName: "plus")
-                        }
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(
-                            Capsule().stroke(Color.white, lineWidth: 2)
-                        )
+                        Label("Add Tab", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.glass)
+                    .controlSize(.large)
                     .accessibilityLabel("Add tab")
 
                     // Sits below Add Tab so the tab rows above don't shift
@@ -87,7 +83,7 @@ struct TabListView: View {
             if store.sales.total > 0 {
                 Text("Today: \(SettingsView.currencyString(store.sales.total))")
                     .font(.caption2)
-                    .foregroundStyle(Color(red: 0.09, green: 0.62, blue: 0.36))
+                    .foregroundStyle(.green)
             }
         }
         .padding(.top, 4)
@@ -126,6 +122,9 @@ private struct TabRow: View {
     @EnvironmentObject private var store: TabStore
 
     var body: some View {
+        // Content only — the enclosing NavigationLink uses
+        // .buttonStyle(.glassProminent) + .tint(.white) for the surface,
+        // which adapts automatically to AOD and Dynamic Type.
         HStack {
             Text(tab.name)
                 .font(.headline)
@@ -135,15 +134,10 @@ private struct TabRow: View {
                 Text(SettingsView.currencyString(subtotal))
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(Color(white: 0.35))
+                    .foregroundStyle(.secondary)
             }
         }
-        .foregroundStyle(.black)
-        .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, minHeight: 44)
-        .background(
-            Capsule().fill(Color(white: 0.85))
-        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
@@ -198,18 +192,11 @@ private struct UndoBanner: View {
                     .foregroundStyle(.secondary)
             }
             .font(.caption)
-            .foregroundStyle(.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .background(
-                Capsule().fill(Color(white: 0.18))
-            )
-            .overlay(
-                Capsule().stroke(Color(white: 0.35), lineWidth: 1)
-            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.glass)
         .accessibilityLabel("Undo close out of \(snap.tab.name), \(secondsLeft) seconds left")
     }
 }
